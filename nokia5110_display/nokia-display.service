@@ -1,0 +1,25 @@
+[Unit]
+Description=Nokia 5110 Display for Temperature Monitor
+After=network-online.target temperature-server.service
+Wants=network-online.target
+# temperature-server がなくても起動できる (Flask 応答無しでも動くフォールバック実装)
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/nokia5110_display
+Environment="PATH=/home/pi/nokia5110_display/venv/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PYTHONUNBUFFERED=1"
+# デフォルト調整パラメータ (必要なら書換え):
+# Environment="DISPLAY_REFRESH_SEC=2"
+# Environment="DISPLAY_ROTATE_SEC=5"
+# Environment="FONT_KANJI_SIZE=10"
+# Environment="NOKIA_CONTRAST=60"
+ExecStart=/home/pi/nokia5110_display/venv/bin/python3 /home/pi/nokia5110_display/nokia5110_display.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

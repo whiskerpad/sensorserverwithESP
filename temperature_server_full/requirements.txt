@@ -1,0 +1,14 @@
+Flask==2.3.0
+Flask-CORS==4.0.0
+Flask-Compress==1.13
+selenium==4.12.0
+requests==2.31.0
+psutil==5.9.5
+python-dotenv==1.0.0
+gunicorn==21.2.0
+pytz==2023.3
+pyserial==3.5
+# カメラ MJPEG ストリーミング用 (2026-08-11 復活、08-12 NumPy 2 対応版に更新)
+# headless 版は Qt/GUI 依存なし、Pi サーバ用途に最適
+# 4.10.0.84 以降が NumPy 2.x 対応 (4.9 系は numpy<2 必須で衝突する)
+opencv-python-headless>=4.10.0.84

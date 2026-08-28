@@ -1,0 +1,1769 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>温度監視ダッシュボード</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 10px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        header {
+            text-align: center;
+            color: white;
+            margin-bottom: 15px;
+        }
+        header h1 { font-size: 1.8em; margin-bottom: 5px; }
+        header p { font-size: 0.9em; }
+        .nav {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-bottom: 15px;
+        }
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            background: rgba(255,255,255,0.2);
+            color: white;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.9em;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .btn:hover { background: rgba(255,255,255,0.3); }
+        .btn.active { background: white; color: #667eea; }
+        
+        .sensors-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 8px;
+            margin-bottom: 15px;
+        }
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+            transition: transform 0.3s ease;
+        }
+        .card:hover { transform: translateY(-2px); }
+        .card h2 { color: #667eea; margin-bottom: 6px; font-size: 0.95em; }
+        .card h3 { color: #764ba2; margin-bottom: 4px; font-size: 0.9em; }
+        .temp-display {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #764ba2;
+            text-align: center;
+            margin: 4px 0;
+        }
+        .sensor-info {
+            margin-top: 6px;
+            padding-top: 6px;
+            border-top: 1px solid #eee;
+        }
+        .sensor-info p {
+            margin: 2px 0;
+            color: #666;
+            font-size: 0.8em;
+        }
+        .sensor-info strong {
+            color: #333;
+        }
+        .card.minimal {
+            background: rgba(255,255,255,0.9);
+            padding: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .card.minimal .minimal-content {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+        .card.minimal .sensor-name {
+            font-weight: bold;
+            font-size: 0.9em;
+            color: #333;
+        }
+        .card.minimal .last-update {
+            font-size: 0.75em;
+            color: #999;
+        }
+        .status {
+            display: flex;
+            gap: 8px;
+            padding: 6px 10px;
+            background: #f0f0f0;
+            border-radius: 6px;
+            margin: 5px 0;
+            font-size: 0.9em;
+        }
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-top: 4px;
+        }
+        .status-dot.online { background: #4caf50; }
+        .status-dot.offline { background: #f44336; }
+        
+        .chart-container {
+            background: white;
+            border-radius: 10px;
+            padding: 15px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+            margin-bottom: 15px;
+        }
+        .chart-container h2 {
+            color: #667eea;
+            margin-bottom: 12px;
+            font-size: 1.2em;
+        }
+        .chart-controls {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+        .chart-controls button {
+            padding: 6px 12px;
+            border: 2px solid #667eea;
+            border-radius: 5px;
+            background: white;
+            color: #667eea;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.85em;
+            transition: all 0.3s ease;
+        }
+        .chart-controls button:hover {
+            background: #667eea;
+            color: white;
+        }
+        .chart-controls button.active {
+            background: #667eea;
+            color: white;
+        }
+        .downsample-toggle-btn {
+            margin-left: auto;
+            background: #f0f0f0;
+            border: 2px solid #ccc;
+            color: #666;
+        }
+        .downsample-toggle-btn:hover {
+            background: #e0e0e0;
+            border-color: #999;
+        }
+        .downsample-toggle-btn.active {
+            background: #4caf50;
+            border-color: #4caf50;
+            color: white;
+        }
+        .period-nav-btn {
+            padding: 6px 10px;
+            border: 2px solid #667eea;
+            border-radius: 5px;
+            background: white;
+            color: #667eea;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 1em;
+            transition: all 0.3s ease;
+            min-width: 36px;
+        }
+        .period-nav-btn:hover {
+            background: #667eea;
+            color: white;
+        }
+        .period-display {
+            padding: 6px 12px;
+            background: rgba(102, 126, 234, 0.1);
+            border-radius: 5px;
+            color: #667eea;
+            font-weight: 600;
+            font-size: 0.85em;
+            display: flex;
+            align-items: center;
+            white-space: nowrap;
+        }
+        .chart-wrapper {
+            position: relative;
+            height: 300px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* 温度アラート */
+        .temperature-alert {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);
+            color: white;
+            padding: 20px 25px;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(244, 67, 54, 0.4);
+            z-index: 1000;
+            min-width: 300px;
+            max-width: 400px;
+            animation: slideIn 0.3s ease-out;
+            display: none;
+        }
+        .temperature-alert.show {
+            display: block;
+        }
+        .temperature-alert h3 {
+            margin: 0 0 10px 0;
+            font-size: 1.2em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .temperature-alert .alert-content {
+            margin: 10px 0;
+            font-size: 0.95em;
+            line-height: 1.6;
+        }
+        .temperature-alert .alert-sensor {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 8px 12px;
+            border-radius: 5px;
+            margin: 5px 0;
+        }
+        .temperature-alert .close-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 1.2em;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.3s;
+        }
+        .temperature-alert .close-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        .temperature-alert.pulse {
+            animation: slideIn 0.3s ease-out, pulse 2s infinite;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🌡️ 温度監視ダッシュボード</h1>
+        </header>
+
+        <div class="nav">
+            <a href="/" class="btn active">ダッシュボード</a>
+            <a href="/stream" class="btn">ビデオストリーミング</a>
+            <a href="/management" class="btn">管理画面</a>
+        </div>
+
+        <!-- 温度アラート (閾値・条件は管理画面 → アラート設定で変更可) -->
+        <div id="temperature-alert" class="temperature-alert">
+            <button class="close-btn" onclick="closeAlert()">×</button>
+            <h3 id="alert-title">⚠️ 温度アラート</h3>
+            <div class="alert-content">
+                <p><strong id="alert-condition-text">温度アラートを検出しました</strong></p>
+                <div id="alert-sensors-list"></div>
+            </div>
+        </div>
+
+        <!-- センサー一覧 -->
+        <div class="sensors-grid" id="sensors-grid">
+            <!-- センサーカードはJavaScriptで動的に生成 -->
+        </div>
+
+        <!-- トレンドグラフ -->
+        <div class="chart-container">
+            <h2>📈 温度トレンドグラフ</h2>
+            <div class="chart-controls">
+                <!-- 矢印ボタン（期間移動） -->
+                <button id="period-prev-btn" class="period-nav-btn" title="期間を前に移動">◀</button>
+                <button id="period-next-btn" class="period-nav-btn" title="期間を後に移動">▶</button>
+                <!-- 表示期間 -->
+                <div id="period-display" class="period-display"></div>
+                <button class="time-range-btn" data-hours="0.5">30分</button>
+                <button class="time-range-btn active" data-hours="1">1時間</button>
+                <button class="time-range-btn" data-hours="6">6時間</button>
+                <button class="time-range-btn" data-hours="24">1日</button>
+                <button class="time-range-btn" data-hours="168">1週間</button>
+                <button class="time-range-btn" data-hours="720">1ヶ月</button>
+                <!-- 更新ボタン -->
+                <button id="refresh-btn" class="refresh-btn" title="グラフを手動更新" style="margin-left: auto; background: #f0f0f0; border-color: #999; color: #333;">🔄 更新</button>
+                <!-- 間引き切り替えボタン（処理が重い場合はこのボタンを削除可能） -->
+                <button id="downsample-toggle-btn" class="downsample-toggle-btn" onclick="toggleDownsampling()">
+                    <span id="downsample-status">間引き: OFF</span>
+                </button>
+            </div>
+            <div class="chart-wrapper" id="chart-wrapper">
+                <div id="chart-loading" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255, 255, 255, 0.9); z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                    <div style="font-size: 1.2em; color: #667eea; margin-bottom: 15px; font-weight: 600;">📊 データ読み込み中...</div>
+                    <div style="width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid #667eea; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+                </div>
+                <canvas id="temperatureChart"></canvas>
+            </div>
+        </div>
+
+        <!-- ESP-NOW Master 情報 (2026-08-15 追加、子機書込み用 MAC コピー) -->
+        <!-- 2026-08-16: 折りたたみ対応 (localStorage で開閉状態を記憶) -->
+        <div class="card" id="masters-card">
+            <h2 id="masters-header"
+                onclick="toggleMastersCard()"
+                style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;">
+                <span>📡 ESP-NOW Master 機 <span style="font-size:0.55em;color:#888;font-weight:normal;">(子機スケッチの masterMAC[] にコピペ)</span></span>
+                <span id="masters-toggle-icon" style="font-size:0.8em;color:#667eea;">▶ 展開</span>
+            </h2>
+            <div id="masters-content" style="font-size:0.9em;display:none;">読み込み中...</div>
+        </div>
+
+        <!-- システムステータス -->
+        <div class="card">
+            <h2>🔧 システムステータス</h2>
+            <div class="status">
+                <div class="status-dot online" id="status-esp32"></div>
+                <span id="status-esp32-text">ESP 接続中 (3台)</span>
+            </div>
+            <div class="status">
+                <div class="status-dot online" id="status-espnow"></div>
+                <span id="status-espnow-text">ESP-NOW 稼働中</span>
+            </div>
+            <div class="status">
+                <div class="status-dot online" id="status-ap"></div>
+                <span id="status-ap-text">WiFi AP 稼働中</span>
+            </div>
+            <div class="status">
+                <div class="status-dot online" id="status-internet"></div>
+                <span id="status-internet-text">インターネット接続</span>
+            </div>
+            <div class="status">
+                <div class="status-dot online"></div>
+                <span>接続センサー数: <strong id="sensor-count">0</strong></span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // HTMLエスケープ関数（XSS対策）
+        function escapeHtml(text) {
+            if (text == null || text === undefined) {
+                return '';
+            }
+            const div = document.createElement('div');
+            div.textContent = String(text);
+            return div.innerHTML;
+        }
+        
+        // Chart.js の設定
+        let temperatureChart = null;
+        let currentHours = 1; // デフォルトは1時間トレンド
+        let periodStartTime = null; // 期間の開始時刻（nullの場合は現在時刻を基準）
+        const chartColors = [
+            'rgb(102, 126, 234)',  // 青
+            'rgb(118, 75, 162)',   // 紫
+            'rgb(76, 175, 80)',    // 緑
+            'rgb(255, 152, 0)',    // オレンジ
+            'rgb(244, 67, 54)',    // 赤
+        ];
+        
+        // センサーリストを共有（重複リクエストを削減）
+        let cachedSensorsData = null;
+        let lastSensorsUpdate = 0;
+        const SENSORS_CACHE_TTL = 10000; // 10秒間キャッシュ（5秒ごとの更新に対応）
+        let sensorsDataPromise = null; // 進行中のリクエストを共有
+        
+        // APステータスをキャッシュ（重複リクエストを削減）
+        let cachedApStatus = null;
+        let lastApStatusUpdate = 0;
+        const AP_STATUS_CACHE_TTL = 10000; // 10秒間キャッシュ（AP状態は頻繁に変わらない）
+        
+        // グラフの最大データポイント数（Chart.jsのパフォーマンス向上のため）
+        const MAX_CHART_POINTS = 500; // 最大500ポイント（それ以上は間引き）
+        
+        // 間引きのON/OFF設定（初期値: ON = 間引き有効）
+        let downsamplingEnabled = true;
+        
+        // セットの等価性チェック（パフォーマンス最適化用）
+        function setsEqual(set1, set2) {
+            if (set1.size !== set2.size) return false;
+            for (const item of set1) {
+                if (!set2.has(item)) return false;
+            }
+            return true;
+        }
+        
+        // データを間引き（ダウンサンプリング）する関数（最大値・最小値・急激な変化を保持）
+        function downsampleData(dataPoints, maxPoints) {
+            if (dataPoints.length <= maxPoints) {
+                return dataPoints;
+            }
+            
+            const downsampled = [];
+            const step = Math.ceil(dataPoints.length / maxPoints);
+            
+            // 1. 最初と最後のポイントは必ず含める
+            downsampled.push(dataPoints[0]);
+            
+            // 2. 最大値・最小値を検出して保持
+            let maxTemp = dataPoints[0].temperature;
+            let minTemp = dataPoints[0].temperature;
+            let maxIndex = 0;
+            let minIndex = 0;
+            
+            for (let i = 1; i < dataPoints.length - 1; i++) {
+                if (dataPoints[i].temperature > maxTemp) {
+                    maxTemp = dataPoints[i].temperature;
+                    maxIndex = i;
+                }
+                if (dataPoints[i].temperature < minTemp) {
+                    minTemp = dataPoints[i].temperature;
+                    minIndex = i;
+                }
+            }
+            
+            // 重複チェック用のセット（O(1)参照で高速化）
+            const addedIndices = new Set([0]); // 最初のポイントのインデックス
+            
+            // 最大値・最小値のポイントを追加（重複チェック）
+            if (maxIndex > 0 && maxIndex < dataPoints.length - 1) {
+                if (!addedIndices.has(maxIndex)) {
+                    downsampled.push(dataPoints[maxIndex]);
+                    addedIndices.add(maxIndex);
+                }
+            }
+            if (minIndex > 0 && minIndex < dataPoints.length - 1 && minIndex !== maxIndex) {
+                if (!addedIndices.has(minIndex)) {
+                    downsampled.push(dataPoints[minIndex]);
+                    addedIndices.add(minIndex);
+                }
+            }
+            
+            // 3. 急激な変化（変化率が大きい箇所）を検出して保持
+            const changeThreshold = 0.5; // 0.5°C以上の変化を検出
+            const importantPoints = new Set();
+            
+            for (let i = 1; i < dataPoints.length - 1; i++) {
+                const prevTemp = dataPoints[i - 1].temperature;
+                const currTemp = dataPoints[i].temperature;
+                const nextTemp = dataPoints[i + 1].temperature;
+                
+                // 前後のポイントとの変化率を計算
+                const change1 = Math.abs(currTemp - prevTemp);
+                const change2 = Math.abs(nextTemp - currTemp);
+                
+                // 急激な変化がある場合は保持
+                if (change1 > changeThreshold || change2 > changeThreshold) {
+                    importantPoints.add(i);
+                }
+            }
+            
+            // 重要ポイントを追加（最大値・最小値と重複しないように）
+            importantPoints.forEach(index => {
+                if (!addedIndices.has(index)) {
+                    downsampled.push(dataPoints[index]);
+                    addedIndices.add(index);
+                }
+            });
+            
+            // 4. 残りのポイントを均等に間引き
+            const remainingSlots = maxPoints - downsampled.length - 1; // -1は最後のポイント用
+            if (remainingSlots > 0) {
+                const adjustedStep = Math.ceil((dataPoints.length - 1) / remainingSlots);
+                for (let i = adjustedStep; i < dataPoints.length - 1; i += adjustedStep) {
+                    // 既に追加されているポイントはスキップ
+                    if (!addedIndices.has(i)) {
+                        downsampled.push(dataPoints[i]);
+                        addedIndices.add(i);
+                    }
+                }
+            }
+            
+            // 5. 最後のポイントを追加
+            if (dataPoints.length > 1) {
+                const lastIndex = dataPoints.length - 1;
+                if (!addedIndices.has(lastIndex)) {
+                    downsampled.push(dataPoints[lastIndex]);
+                    addedIndices.add(lastIndex);
+                }
+            }
+            
+            // 6. タイムスタンプでソート（順序を保証）
+            downsampled.sort((a, b) => a.timestamp - b.timestamp);
+            
+            return downsampled;
+        }
+
+        // グラフを初期化
+        function initChart() {
+            const ctx = document.getElementById('temperatureChart').getContext('2d');
+            temperatureChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: []
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: false, // アニメーション無効化（パフォーマンス向上）
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: false,
+                            title: {
+                                display: true,
+                                text: '温度 (°C)'
+                            },
+                            // Y軸の範囲を自動調整（データに応じて）
+                            suggestedMin: undefined,
+                            suggestedMax: undefined,
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: '時刻'
+                            }
+                        }
+                    },
+                    elements: {
+                        point: {
+                            radius: 0,  // ドットを非表示
+                            hoverRadius: 5  // ホバー時のみ表示
+                        },
+                        line: {
+                            borderWidth: 2  // 線の太さ
+                        }
+                    }
+                }
+            });
+        }
+
+        // グローバル変数：24時間グラフキャッシュ
+        let dashboardChartCache = {
+            data: null,
+            timestamp: null,
+            ttl: 60000 // 60秒キャッシュ
+        };
+        
+        // 期間選択ボタンのイベント（データ再読み込み）
+        document.querySelectorAll('.time-range-btn').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                // 更新ボタンは除外
+                if (this.id === 'refresh-btn') {
+                    return;
+                }
+                
+                document.querySelectorAll('.time-range-btn').forEach(b => {
+                    if (b.id !== 'refresh-btn') {
+                        b.classList.remove('active');
+                    }
+                });
+                this.classList.add('active');
+                const newHours = parseFloat(this.dataset.hours);
+                
+                // 期間が変更された場合のみデータを再読み込み
+                if (!isNaN(newHours) && newHours !== currentHours) {
+                    currentHours = newHours;
+                    periodStartTime = null; // 期間変更時は現在時刻を基準にリセット
+                    formatLabelCache.clear(); // LRUキャッシュをクリア
+                    
+                    // 24時間データのキャッシュがあれば使用（バックグラウンド読み込み済み）
+                    if (newHours === 24 && window.dashboardFullDataCache) {
+                        console.log('[Dashboard] 24時間キャッシュから復元');
+                        cachedSensorsData = window.dashboardFullDataCache;
+                        lastSensorsUpdate = Date.now();
+                        
+                        // グラフキャッシュがあればそれも使用（APIリクエスト削減）
+                        if (dashboardChartCache.data && 
+                            (Date.now() - dashboardChartCache.timestamp) < dashboardChartCache.ttl) {
+                            console.log('[Dashboard] グラフキャッシュから復元（APIリクエストなし）');
+                            updateChartFromCache(dashboardChartCache.data);
+                            updatePeriodDisplay(); // 表示期間を更新
+                            return;
+                        }
+                    }
+                    
+                    updateChart(); // データを再読み込み（読み込み中表示付き）
+                } else if (!isNaN(newHours) && newHours === currentHours) {
+                    // 同じ期間が選択された場合は現在時刻を基準にリセット
+                    periodStartTime = null;
+                    updateChart();
+                }
+            });
+        });
+
+        // 表示期間を更新する関数
+        function updatePeriodDisplay() {
+            const periodDisplayEl = document.getElementById('period-display');
+            if (!periodDisplayEl) return;
+            
+            const now = new Date();
+            const endTime = periodStartTime ? new Date(periodStartTime.getTime() + currentHours * 60 * 60 * 1000) : now;
+            const startTime = periodStartTime || new Date(now.getTime() - currentHours * 60 * 60 * 1000);
+            
+            const formatDate = (date) => {
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                return `${year}/${month}/${day}`;
+            };
+            
+            const startStr = formatDate(startTime);
+            const endStr = formatDate(endTime);
+            
+            periodDisplayEl.textContent = `${startStr}-${endStr}`;
+        }
+
+        // 矢印ボタンのイベントハンドラー
+        document.getElementById('period-prev-btn')?.addEventListener('click', function() {
+            const now = new Date();
+            const currentEndTime = periodStartTime ? new Date(periodStartTime.getTime() + currentHours * 60 * 60 * 1000) : now;
+            const newEndTime = new Date(currentEndTime.getTime() - currentHours * 60 * 60 * 1000);
+            periodStartTime = new Date(newEndTime.getTime() - currentHours * 60 * 60 * 1000);
+            updateChart();
+        });
+
+        document.getElementById('period-next-btn')?.addEventListener('click', function() {
+            const now = new Date();
+            const currentEndTime = periodStartTime ? new Date(periodStartTime.getTime() + currentHours * 60 * 60 * 1000) : now;
+            const newEndTime = new Date(currentEndTime.getTime() + currentHours * 60 * 60 * 1000);
+            
+            // 未来の期間は表示しない（現在時刻を超えない）
+            if (newEndTime > now) {
+                periodStartTime = null; // 現在時刻を基準にリセット
+            } else {
+                periodStartTime = new Date(newEndTime.getTime() - currentHours * 60 * 60 * 1000);
+            }
+            updateChart();
+        });
+
+        // センサーカードを生成
+        function createSensorCard(sensor) {
+            const timestamp = new Date(sensor.timestamp);
+            const timeStr = timestamp.toLocaleString('ja-JP', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                timeZone: 'Asia/Tokyo'
+            });
+
+            // バッテリーステータスアイコン
+            const batteryIcon = sensor.battery_mode ? '🔋 バッテリー駆動' : '🔌 USB/AC給電';
+            
+            // WiFi信号強度インジケータ
+            let signalBars = '📶';
+            if (sensor.rssi) {
+                if (sensor.rssi >= -50) signalBars = '📶📶📶📶 (優)';
+                else if (sensor.rssi >= -60) signalBars = '📶📶📶 (良)';
+                else if (sensor.rssi >= -70) signalBars = '📶📶 (中)';
+                else if (sensor.rssi >= -80) signalBars = '📶 (弱)';
+                else signalBars = '❌ (接続不可)';
+            }
+
+            return `
+                <div class="card" data-sensor-id="${escapeHtml(sensor.sensor_id)}">
+                    <h3>${escapeHtml(sensor.nickname || sensor.sensor_name || sensor.sensor_id)}</h3>
+                    <div class="temp-display">${sensor.temperature.toFixed(1)}°C</div>
+                    <div class="sensor-info">
+                        <p><strong>センサーID:</strong> ${escapeHtml(sensor.sensor_id)}</p>
+                        <p><strong>最終更新:</strong> ${escapeHtml(timeStr)}</p>
+                        ${sensor.humidity ? `<p><strong>湿度:</strong> ${sensor.humidity.toFixed(1)}%</p>` : ''}
+                        ${sensor.rssi ? `<p><strong>WiFi信号:</strong> ${sensor.rssi} dBm ${signalBars}</p>` : ''}
+                        <p><strong>電源:</strong> ${batteryIcon}</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Y軸の範囲を計算（データに基づいて自動調整）
+        function calculateYAxisRange(allTemps) {
+            if (allTemps.length === 0) return { min: 0, max: 30 };
+            
+            const validTemps = allTemps.filter(t => t !== null && !isNaN(t));
+            if (validTemps.length === 0) return { min: 0, max: 30 };
+            
+            const minTemp = Math.min(...validTemps);
+            const maxTemp = Math.max(...validTemps);
+            const range = maxTemp - minTemp;
+            
+            // マージンを追加（範囲の10%、最低5°C）
+            const margin = Math.max(range * 0.1, 5);
+            
+            return {
+                min: Math.max(0, Math.floor(minTemp - margin)),
+                max: Math.ceil(maxTemp + margin)
+            };
+        }
+
+        // グラフデータのないセンサーに対して簡潔なカードを表示
+        function createMinimalSensorCard(sensor) {
+            const timeStr = sensor.timestamp ? 
+                new Date(sensor.timestamp).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' }) : 
+                '未取得';
+            
+            return `
+                <div class="card minimal">
+                    <div class="minimal-content">
+                        <div class="sensor-name">${escapeHtml(sensor.nickname || sensor.sensor_name || sensor.sensor_id)}</div>
+                        <div class="last-update">最終更新: ${escapeHtml(timeStr)}</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // LRUキャッシュクラス（Least Recently Used）
+        class LRUCache {
+            constructor(maxSize = 1000) {
+                this.maxSize = maxSize;
+                this.cache = new Map();
+            }
+            
+            get(key) {
+                if (this.cache.has(key)) {
+                    // アクセスされたエントリを最後に移動（LRU）
+                    const value = this.cache.get(key);
+                    this.cache.delete(key);
+                    this.cache.set(key, value);
+                    return value;
+                }
+                return undefined;
+            }
+            
+            set(key, value) {
+                if (this.cache.has(key)) {
+                    // 既存のエントリを更新して最後に移動
+                    this.cache.delete(key);
+                } else if (this.cache.size >= this.maxSize) {
+                    // 最大サイズに達した場合、最も古い（最初の）エントリを削除
+                    const firstKey = this.cache.keys().next().value;
+                    this.cache.delete(firstKey);
+                }
+                this.cache.set(key, value);
+            }
+            
+            clear() {
+                this.cache.clear();
+            }
+            
+            get size() {
+                return this.cache.size;
+            }
+        }
+        
+        // ラベルフォーマット関数（期間に応じた表示形式、LRUキャッシュ使用）
+        const formatLabelCache = new LRUCache(1000);
+        function formatLabel(date, hours) {
+            const cacheKey = `${date.getTime()}-${hours}`;
+            const cached = formatLabelCache.get(cacheKey);
+            if (cached !== undefined) {
+                return cached;
+            }
+            
+            let formatted;
+            if (hours <= 1) {
+                formatted = date.toLocaleTimeString('ja-JP', { 
+                    hour: '2-digit', minute: '2-digit', second: hours <= 0.5 ? '2-digit' : undefined,
+                    timeZone: 'Asia/Tokyo'
+                });
+            } else if (hours <= 24) {
+                formatted = date.toLocaleTimeString('ja-JP', { 
+                    hour: '2-digit', minute: '2-digit',
+                    timeZone: 'Asia/Tokyo'
+                });
+            } else if (hours <= 168) {
+                formatted = date.toLocaleString('ja-JP', { 
+                    month: '2-digit', day: '2-digit',
+                    hour: '2-digit', minute: '2-digit',
+                    timeZone: 'Asia/Tokyo'
+                });
+            } else {
+                formatted = date.toLocaleDateString('ja-JP', { 
+                    month: '2-digit', day: '2-digit',
+                    timeZone: 'Asia/Tokyo'
+                });
+            }
+            
+            formatLabelCache.set(cacheKey, formatted);
+            return formatted;
+        }
+
+        // センサーリストを取得（キャッシュ付き、重複リクエスト防止）
+        async function getSensorsData(forceRefresh = false) {
+            const now = Date.now();
+            // キャッシュが有効な場合は即座に返す
+            if (!forceRefresh && cachedSensorsData && (now - lastSensorsUpdate) < SENSORS_CACHE_TTL) {
+                return cachedSensorsData;
+            }
+            
+            // 既に進行中のリクエストがあれば、それを待つ（重複リクエスト防止）
+            if (sensorsDataPromise) {
+                return await sensorsDataPromise;
+            }
+            
+            // 新しいリクエストを開始
+            sensorsDataPromise = (async () => {
+                try {
+                    const sensorsResponse = await fetch('/api/sensors');
+                    if (!sensorsResponse.ok) {
+                        throw new Error(`HTTP error! status: ${sensorsResponse.status}`);
+                    }
+                    const sensorsData = await sensorsResponse.json();
+                    cachedSensorsData = sensorsData;
+                    lastSensorsUpdate = Date.now();
+                    sensorsDataPromise = null; // リクエスト完了
+                    return sensorsData;
+                } catch (error) {
+                    console.error('Error fetching sensors:', error);
+                    sensorsDataPromise = null; // エラー時もクリア
+                    // キャッシュがあればそれを使用
+                    return cachedSensorsData || { sensors: [] };
+                }
+            })();
+            
+            return await sensorsDataPromise;
+        }
+
+        // グラフデータを更新（高速化：バッチAPI使用）
+        function updateChartFromCache(batchData) {
+            // キャッシュからグラフを復元（APIリクエストなし）
+            if (!temperatureChart) return;
+            
+            const loadingEl = document.getElementById('chart-loading');
+            if (loadingEl) {
+                loadingEl.style.display = 'none';
+            }
+            
+            try {
+                const sensorsData = cachedSensorsData;
+                const sensorIds = sensorsData.sensors.map(s => s.sensor_id);
+                
+                const datasets = [];
+                const sensorDataMap = {};
+                const allTemps = [];
+
+                // バッチデータを処理
+                for (const sensorId of sensorIds) {
+                    const sensor = sensorsData.sensors.find(s => s.sensor_id === sensorId);
+                    if (!sensor) continue;
+                    
+                    const readings = batchData.data[sensorId]?.readings || [];
+                    if (readings.length === 0) {
+                        continue;
+                    }
+
+                    const sortedReadings = readings.sort((a, b) => {
+                        return new Date(a.timestamp) - new Date(b.timestamp);
+                    });
+                    
+                    const dataPoints = [];
+                    sortedReadings.forEach(reading => {
+                        const date = new Date(reading.timestamp);
+                        const ts = date.getTime();
+                        dataPoints.push({ timestamp: ts, temperature: reading.temperature });
+                        allTemps.push(reading.temperature);
+                    });
+
+                    const downsampledPoints = downsamplingEnabled 
+                        ? downsampleData(dataPoints, MAX_CHART_POINTS)
+                        : dataPoints;
+                    
+                    sensorDataMap[sensorId] = {
+                        dataPoints: downsampledPoints,
+                        name: sensor.nickname || sensor.sensor_name || sensorId
+                    };
+                }
+                
+                // タイムスタンプ生成とデータセット構築は updateChart と同じロジック
+                const allTimestamps = new Set();
+                Object.values(sensorDataMap).forEach(data => {
+                    data.dataPoints.forEach(point => {
+                        allTimestamps.add(point.timestamp);
+                    });
+                });
+                
+                const sortedTimestamps = Array.from(allTimestamps).sort((a, b) => a - b);
+                
+                for (const sensorId of sensorIds) {
+                    const data = sensorDataMap[sensorId];
+                    if (!data) continue;
+                    
+                    const dataMap = new Map(data.dataPoints.map(p => [p.timestamp, p.temperature]));
+                    const values = sortedTimestamps.map(ts => dataMap.get(ts) || null);
+                    
+                    datasets.push({
+                        label: data.name,
+                        data: values,
+                        borderColor: getSensorColor(sensorId),
+                        backgroundColor: getSensorColor(sensorId) + '20',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        pointHoverRadius: 4,
+                        tension: 0.1,
+                        spanGaps: false
+                    });
+                }
+                
+                const labels = sortedTimestamps.map(ts => formatDateLabel(new Date(ts)));
+                
+                temperatureChart.data.labels = labels;
+                temperatureChart.data.datasets = datasets;
+                temperatureChart.update();
+                
+                // 表示期間を更新
+                updatePeriodDisplay();
+                
+                console.log('[updateChartFromCache] グラフ復元完了');
+            } catch (error) {
+                console.error('[updateChartFromCache] エラー:', error);
+            }
+        }
+
+        // グラフ更新の重複リクエスト防止
+        let isChartUpdating = false;
+        let pendingChartUpdate = false;
+        
+        // グラフエラー再試行カウンター
+        let chartErrorRetryCount = 0;
+        const MAX_CHART_ERROR_RETRIES = 3;
+        
+        // グラフデータを更新（高速化：バッチAPI使用）
+        async function updateChart(sensorsDataParam = null) {
+            if (!temperatureChart) {
+                console.warn('[updateChart] グラフが初期化されていません');
+                return;
+            }
+            
+            // 既に更新中の場合は、次の更新を予約
+            if (isChartUpdating) {
+                pendingChartUpdate = true;
+                return;
+            }
+            
+            isChartUpdating = true;
+            pendingChartUpdate = false;
+
+            // 読み込み中表示を表示（tryブロックの外で定義してfinallyでも参照可能にする）
+            const loadingEl = document.getElementById('chart-loading');
+            
+            // 読み込み表示を即座に表示
+            if (loadingEl) {
+                loadingEl.style.display = 'flex'; // flex表示に変更
+            }
+            
+            // 少し遅延を入れて確実に表示されるようにする（UIのため）
+            await new Promise(resolve => setTimeout(resolve, 50));
+
+            try {
+                console.log(`[updateChart] グラフ更新開始 (${new Date().toLocaleTimeString()}) - ${currentHours}時間分`);
+
+                // センサーリストを取得（必ず最新データを取得）
+                // パラメータで渡された場合はそれを使用、なければ強制リフレッシュで最新を取得
+                const sensorsData = sensorsDataParam || await getSensorsData(true);  // true = 強制リフレッシュ
+                
+                if (!sensorsData || !sensorsData.sensors || sensorsData.sensors.length === 0) {
+                    // データがない場合は読み込み表示を消して終了
+                    console.warn('[updateChart] センサーデータがありません');
+                    if (loadingEl) {
+                        loadingEl.style.display = 'none';
+                    }
+                    updatePeriodDisplay(); // データがなくても表示期間を更新
+                    isChartUpdating = false; // フラグをリセット
+                    return;
+                }
+
+                const sensorIds = sensorsData.sensors.map(s => s.sensor_id);
+                
+                // periodStartTimeが設定されている場合、必要な期間を計算
+                const now = new Date();
+                let requestHours = currentHours;
+                let filterStartTime = null;
+                let filterEndTime = null;
+                
+                if (periodStartTime) {
+                    // periodStartTimeから現在時刻までの時間を計算
+                    const hoursFromStartToNow = (now.getTime() - periodStartTime.getTime()) / (1000 * 60 * 60);
+                    requestHours = Math.max(currentHours, hoursFromStartToNow);
+                    filterStartTime = periodStartTime.getTime();
+                    filterEndTime = periodStartTime.getTime() + currentHours * 60 * 60 * 1000;
+                }
+                
+                // バッチAPIで全センサーのデータを1回のリクエストで取得（高速化）
+                // 期間に応じて max_points を動的に設定（データ粗さを軽減）
+                const maxPoints = currentHours <= 1 ? 100 : 
+                                  currentHours <= 24 ? 500 :
+                                  currentHours <= 168 ? 1000 : 2000;
+                
+                const batchResponse = await fetch('/api/temperature/batch', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        sensor_ids: sensorIds,
+                        hours: requestHours,
+                        max_points: maxPoints,  // 期間に応じた動的値
+                        include_stats: false  // 統計情報は取得しない（高速化）
+                    })
+                });
+
+                if (!batchResponse.ok) {
+                    throw new Error(`Batch API error: ${batchResponse.status}`);
+                }
+
+                const batchData = await batchResponse.json();
+                
+                if (!batchData.data || Object.keys(batchData.data).length === 0) {
+                    // データがない場合は読み込み表示を消して終了
+                    if (loadingEl) {
+                        loadingEl.style.display = 'none';
+                    }
+                    updatePeriodDisplay(); // データがなくても表示期間を更新
+                    return;
+                }
+
+                const datasets = [];
+                const sensorDataMap = {};
+                const allTemps = [];
+                let totalOriginalPoints = 0; // 元のデータポイント数を記録
+
+                // バッチデータを処理
+                for (const sensorId of sensorIds) {
+                    const sensor = sensorsData.sensors.find(s => s.sensor_id === sensorId);
+                    if (!sensor) continue;
+                    
+                    const readings = batchData.data[sensorId]?.readings || [];
+                    if (readings.length === 0) {
+                        continue;
+                    }
+
+                    totalOriginalPoints += readings.length; // 元のデータポイント数を記録
+
+                    const sortedReadings = readings.sort((a, b) => {
+                        return new Date(a.timestamp) - new Date(b.timestamp);
+                    });
+                    
+                    const dataPoints = [];
+                    sortedReadings.forEach(reading => {
+                        const date = new Date(reading.timestamp);
+                        const ts = date.getTime();
+                        
+                        // periodStartTimeが設定されている場合、期間内のデータのみをフィルタリング
+                        if (filterStartTime && filterEndTime) {
+                            if (ts < filterStartTime || ts > filterEndTime) {
+                                return; // 期間外のデータはスキップ
+                            }
+                        }
+                        
+                        dataPoints.push({ timestamp: ts, temperature: reading.temperature });
+                        allTemps.push(reading.temperature);
+                    });
+
+                    // データを間引き（パフォーマンス向上、設定がONの場合のみ）
+                    const downsampledPoints = downsamplingEnabled 
+                        ? downsampleData(dataPoints, MAX_CHART_POINTS)
+                        : dataPoints; // 間引きOFFの場合は全データを使用
+                    
+                    sensorDataMap[sensorId] = {
+                        dataPoints: downsampledPoints,
+                        name: sensor.nickname || sensor.sensor_name || sensorId
+                    };
+                }
+                
+                // すべてのタイムスタンプを収集してソート
+                const allTimestamps = new Set();
+                for (const sensorId in sensorDataMap) {
+                    sensorDataMap[sensorId].dataPoints.forEach(dp => {
+                        allTimestamps.add(dp.timestamp);
+                    });
+                }
+                const sortedTimestamps = Array.from(allTimestamps).sort((a, b) => a - b);
+                
+                // タイムスタンプ→ラベルのマップを1回だけ作成（重複処理削除）
+                const timestampToLabel = new Map();
+                sortedTimestamps.forEach(ts => {
+                    const date = new Date(ts);
+                    timestampToLabel.set(ts, formatLabel(date, currentHours));
+                });
+                const sortedLabels = Array.from(timestampToLabel.values());
+
+                // データセットを作成（O(1)マップ参照を使用）
+                let colorIndex = 0;
+                for (const sensorId in sensorDataMap) {
+                    const data = sensorDataMap[sensorId];
+                    const dataPointsMap = new Map();  // O(1)参照用
+                    data.dataPoints.forEach(dp => {
+                        dataPointsMap.set(dp.timestamp, dp.temperature);
+                    });
+                    
+                    const temps = sortedTimestamps.map(ts => dataPointsMap.get(ts) || null);
+
+                    datasets.push({
+                        label: data.name,
+                        data: temps,
+                        borderColor: chartColors[colorIndex % chartColors.length],
+                        backgroundColor: chartColors[colorIndex % chartColors.length] + '20',
+                        tension: 0.4,
+                        fill: false,
+                        pointRadius: 0,
+                        pointHoverRadius: 5,
+                        pointBackgroundColor: chartColors[colorIndex % chartColors.length],
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2,
+                        showLine: true,
+                        spanGaps: true
+                    });
+                    colorIndex++;
+                }
+
+                // Y軸の範囲を計算
+                const yRange = calculateYAxisRange(allTemps);
+
+                // グラフを更新（アニメーションなしで高速更新）
+                temperatureChart.data.labels = sortedLabels;
+                temperatureChart.data.datasets = datasets;
+                temperatureChart.options.scales.y.suggestedMin = yRange.min;
+                temperatureChart.options.scales.y.suggestedMax = yRange.max;
+                
+                // タイトルを更新
+                const timeLabels = {
+                    0.5: '30分',
+                    1: '1時間',
+                    6: '6時間',
+                    24: '1日',
+                    168: '1週間',
+                    720: '1ヶ月'
+                };
+                document.querySelector('.chart-container h2').textContent = 
+                    `📈 温度トレンドグラフ（過去${timeLabels[currentHours] || currentHours + '時間'}）`;
+                
+                // アニメーションなしで更新（高速化）
+                temperatureChart.update('none');
+                
+                // 表示期間を更新
+                updatePeriodDisplay();
+                
+                const totalPoints = sortedLabels.length;
+                console.log(`[updateChart] グラフ更新完了 (${new Date().toLocaleTimeString()}) - ${totalPoints}ポイント表示（元データ: ${totalOriginalPoints}ポイント、間引き率: ${totalOriginalPoints > 0 ? ((1 - totalPoints / totalOriginalPoints) * 100).toFixed(1) : 0}%）`);
+                
+                // グラフデータがないセンサーは updateData() で既に表示されているため、ここでは追加しない
+                // （重複を避けるため）
+            } catch (error) {
+                console.error('Error updating chart:', error);
+                
+                // 既存のエラーメッセージを削除
+                const existingError = document.querySelector('.chart-error-message');
+                if (existingError) {
+                    existingError.remove();
+                }
+                
+                // 再試行回数をチェック
+                chartErrorRetryCount++;
+                
+                const chartContainer = document.querySelector('.chart-container');
+                if (chartContainer) {
+                    chartContainer.style.position = 'relative';
+                    
+                    // ユーザーにエラーを表示
+                    const errorMsg = document.createElement('div');
+                    errorMsg.className = 'chart-error-message';
+                    
+                    if (chartErrorRetryCount <= MAX_CHART_ERROR_RETRIES) {
+                        errorMsg.textContent = `グラフデータの読み込みに失敗しました。再試行します... (${chartErrorRetryCount}/${MAX_CHART_ERROR_RETRIES})`;
+                        errorMsg.style.cssText = 'position: absolute; top: 10px; left: 50%; transform: translateX(-50%); background: #f44336; color: white; padding: 10px 20px; border-radius: 5px; z-index: 1000; box-shadow: 0 2px 10px rgba(0,0,0,0.2); font-size: 0.9em;';
+                        chartContainer.appendChild(errorMsg);
+                        
+                        // 5秒後に再試行（最大回数まで）
+                        setTimeout(() => {
+                            errorMsg.remove();
+                            updateChart();
+                        }, 5000);
+                    } else {
+                        // 最大再試行回数を超えた場合は、手動更新を促す
+                        errorMsg.textContent = 'グラフデータの読み込みに失敗しました。更新ボタンをクリックしてください。';
+                        errorMsg.style.cssText = 'position: absolute; top: 10px; left: 50%; transform: translateX(-50%); background: #ff9800; color: white; padding: 10px 20px; border-radius: 5px; z-index: 1000; box-shadow: 0 2px 10px rgba(0,0,0,0.2); font-size: 0.9em;';
+                        chartContainer.appendChild(errorMsg);
+                        chartErrorRetryCount = 0; // リセット
+                    }
+                }
+            } finally {
+                // 読み込み中表示を非表示（必ず実行される）
+                if (loadingEl) {
+                    loadingEl.style.display = 'none';
+                }
+                
+                // 更新フラグをリセット（必ず実行される）
+                isChartUpdating = false;
+                
+                // 成功時はエラーカウントをリセット
+                if (chartErrorRetryCount > 0) {
+                    chartErrorRetryCount = 0;
+                }
+                
+                // 待機中の更新リクエストがあれば実行（エラー時は実行しない）
+                if (pendingChartUpdate && chartErrorRetryCount === 0) {
+                    pendingChartUpdate = false;
+                    setTimeout(() => updateChart(), 100);
+                }
+            }
+        }
+
+        // 温度アラート管理
+        // 閾値と条件は localStorage 'tempAlertConfig' から読む (管理画面 → アラート設定で変更)
+        //   { threshold: 5.0, condition: 'below' | 'above' }
+        //   below = X℃ 以下でアラート、above = X℃ 以上でアラート
+        // デフォルト: 5.0 ℃ 以下 (旧ハードコード 3℃ 未満を管理設定に置換、2026-08-22)
+        const TEMP_ALERT_DEFAULT = { threshold: 5.0, condition: 'below' };
+        function getTempAlertConfig() {
+            try {
+                const raw = localStorage.getItem('tempAlertConfig');
+                if (!raw) return { ...TEMP_ALERT_DEFAULT };
+                const cfg = JSON.parse(raw);
+                const t = parseFloat(cfg.threshold);
+                const c = (cfg.condition === 'above') ? 'above' : 'below';
+                if (isNaN(t)) return { ...TEMP_ALERT_DEFAULT };
+                return { threshold: t, condition: c };
+            } catch (e) {
+                return { ...TEMP_ALERT_DEFAULT };
+            }
+        }
+        function formatAlertConditionText(cfg) {
+            const op = (cfg.condition === 'above') ? '以上' : '以下';
+            return `${cfg.threshold}℃ ${op} の温度を検出しました`;
+        }
+        function matchesAlertCondition(temp, cfg) {
+            if (typeof temp !== 'number' || isNaN(temp)) return false;
+            return (cfg.condition === 'above') ? (temp >= cfg.threshold) : (temp <= cfg.threshold);
+        }
+        let alertActiveSensors = new Set(); // 現在アラート中のセンサーID
+        let dismissedAlerts = new Set(); // ユーザーが閉じたアラートのセンサーID
+        
+        // アラートを表示
+        function showTemperatureAlert(lowTempSensors) {
+            const alertEl = document.getElementById('temperature-alert');
+            const alertListEl = document.getElementById('alert-sensors-list');
+            
+            if (!alertEl || !alertListEl) return;
+            
+            // アラート中のセンサーを更新
+            alertActiveSensors.clear();
+            lowTempSensors.forEach(sensor => {
+                alertActiveSensors.add(sensor.sensor_id);
+            });
+            
+            // 閉じられたアラート以外のセンサーをフィルタリング
+            const visibleSensors = lowTempSensors.filter(sensor => !dismissedAlerts.has(sensor.sensor_id));
+            
+            // アラート内容を更新
+            if (visibleSensors.length > 0) {
+                alertListEl.innerHTML = visibleSensors.map(sensor => {
+                    const timeStr = new Date(sensor.timestamp).toLocaleString('ja-JP', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                        timeZone: 'Asia/Tokyo'
+                    });
+                    return `
+                        <div class="alert-sensor">
+                            <strong>${escapeHtml(sensor.nickname || sensor.sensor_name || sensor.sensor_id)}</strong><br>
+                            温度: <strong>${sensor.temperature.toFixed(1)}°C</strong> (${escapeHtml(timeStr)})
+                        </div>
+                    `;
+                }).join('');
+                
+                alertEl.classList.add('show', 'pulse');
+            } else {
+                // 表示するアラートがない場合は非表示
+                alertEl.classList.remove('show', 'pulse');
+            }
+        }
+        
+        // アラートを閉じる
+        function closeAlert() {
+            const alertEl = document.getElementById('temperature-alert');
+            if (alertEl) {
+                alertEl.classList.remove('show', 'pulse');
+                // 現在表示されているすべてのセンサーIDを閉じたアラートに追加
+                alertActiveSensors.forEach(sensorId => {
+                    dismissedAlerts.add(sensorId);
+                });
+            }
+        }
+        
+        // リアルタイムデータ更新（センサーカード温度値のみ更新、HTML再生成は避ける）
+        let lastSensorCount = 0; // 前回のセンサー数を記録（不要な再生成を防止）
+        let lastSensorIds = new Set(); // 前回のセンサーIDを記録
+        
+        async function updateData() {
+            try {
+                // センサーリストを取得（キャッシュから、必要に応じて更新）
+                const sensorsData = await getSensorsData();
+                
+                // 初回呼び出し時のみセンサーカードを生成
+                const sensorsGrid = document.getElementById('sensors-grid');
+                const currentSensorCount = sensorsData.sensors?.length || 0;
+                const currentSensorIds = new Set(sensorsData.sensors?.map(s => s.sensor_id) || []);
+                
+                // センサー数やIDが変更された場合のみ再生成
+                const needsRegeneration = sensorsGrid.children.length === 0 || 
+                                         currentSensorCount !== lastSensorCount ||
+                                         !setsEqual(currentSensorIds, lastSensorIds);
+                
+                if (needsRegeneration) {
+                    if (sensorsData.sensors && sensorsData.sensors.length > 0) {
+                        sensorsGrid.innerHTML = sensorsData.sensors.map(sensor => createSensorCard(sensor)).join('');
+                    } else {
+                        sensorsGrid.innerHTML = '<div class="card"><h2>センサー未接続</h2><p>ESPからのデータを受信していません</p></div>';
+                    }
+                    lastSensorCount = currentSensorCount;
+                    lastSensorIds = new Set(currentSensorIds);
+                } else if (sensorsData.sensors && sensorsData.sensors.length > 0) {
+                    // 2回目以降：温度値のみ更新（DOM再構築なし、変更があった場合のみ）
+                    // sensor_idで正確にマップして、インデックスズレを防止
+                    sensorsData.sensors.forEach((sensor) => {
+                        // data-sensor-id属性で正確にマッピング（テキスト検索より信頼性高い）
+                        const cardEl = sensorsGrid.querySelector(`[data-sensor-id="${escapeHtml(sensor.sensor_id)}"]`);
+                        
+                        if (cardEl) {
+                            const tempEl = cardEl.querySelector('.temp-display');
+                            if (tempEl) {
+                                const newTemp = `${sensor.temperature.toFixed(1)}°C`;
+                                // 値が変更された場合のみ更新（不要なDOM操作を削減）
+                                if (tempEl.textContent !== newTemp) {
+                                    tempEl.textContent = newTemp;
+                                }
+                            }
+                            // 最終更新時刻を更新（変更があった場合のみ）
+                            const updateEl = cardEl.querySelector('.sensor-info p:nth-child(2)');
+                            if (updateEl && sensor.timestamp) {
+                                const timestamp = new Date(sensor.timestamp);
+                                const timeStr = timestamp.toLocaleString('ja-JP', {
+                                    year: 'numeric', month: '2-digit', day: '2-digit',
+                                    hour: '2-digit', minute: '2-digit', second: '2-digit',
+                                    timeZone: 'Asia/Tokyo'
+                                });
+                                const newContent = `<strong>最終更新:</strong> ${escapeHtml(timeStr)}`;
+                                // 値が変更された場合のみ更新
+                                if (updateEl.innerHTML !== newContent) {
+                                    updateEl.innerHTML = newContent;
+                                }
+                            }
+                        }
+                    });
+                }
+                
+                // センサー数を更新（条件分岐減少）
+                const sensorCountEl = document.getElementById('sensor-count');
+                if (sensorCountEl) {
+                    sensorCountEl.textContent = sensorsData.sensors?.length || 0;
+                }
+                
+                // ステータスを更新（条件統合）
+                const statusEsp32El = document.getElementById('status-esp32');
+                const statusEsp32TextEl = document.getElementById('status-esp32-text');
+                const isOnline = sensorsData.sensors && sensorsData.sensors.length > 0;
+                if (statusEsp32El) {
+                    statusEsp32El.className = isOnline ? 'status-dot online' : 'status-dot offline';
+                }
+                if (statusEsp32TextEl) {
+                    statusEsp32TextEl.textContent = isOnline 
+                        ? `ESP 接続中 (${sensorsData.sensors.length}台)` 
+                        : 'ESP 未接続';
+                }
+                
+                // ESP-NOW ステータスを更新
+                const statusEspnowEl = document.getElementById('status-espnow');
+                const statusEspnowTextEl = document.getElementById('status-espnow-text');
+                if (statusEspnowEl && statusEspnowTextEl) {
+                    const espnowDevices = sensorsData.sensors?.filter(s => s.connection_type === 'esp_now') || [];
+                    const espnowActive = espnowDevices.length > 0;
+                    statusEspnowEl.className = espnowActive ? 'status-dot online' : 'status-dot offline';
+                    statusEspnowTextEl.textContent = espnowActive 
+                        ? `ESP-NOW 稼働中 (${espnowDevices.length}台)`
+                        : 'ESP-NOW 待機中';
+                }
+                
+                // WiFi AP ステータスを更新（プロセス確認、キャッシュ付き）
+                const statusApEl = document.getElementById('status-ap');
+                const statusApTextEl = document.getElementById('status-ap-text');
+                if (statusApEl && statusApTextEl) {
+                    try {
+                        const now = Date.now();
+                        let apActive = false;
+                        
+                        // キャッシュをチェック
+                        if (cachedApStatus !== null && (now - lastApStatusUpdate) < AP_STATUS_CACHE_TTL) {
+                            apActive = cachedApStatus;
+                        } else {
+                            // キャッシュが無効または初回取得
+                            const apResponse = await fetch('/api/status/ap');
+                            const apData = await apResponse.json();
+                            apActive = apData.ap_running === true;
+                            cachedApStatus = apActive;
+                            lastApStatusUpdate = now;
+                        }
+                        
+                        statusApEl.className = apActive ? 'status-dot online' : 'status-dot offline';
+                        statusApTextEl.textContent = apActive ? 'WiFi AP 稼働中' : 'WiFi AP 停止中';
+                    } catch (error) {
+                        console.warn('AP status check failed:', error);
+                        statusApEl.className = 'status-dot offline';
+                        statusApTextEl.textContent = 'WiFi AP 状態不明';
+                    }
+                }
+                
+                // 温度アラートチェック (閾値・条件は localStorage から取得)
+                if (sensorsData.sensors && sensorsData.sensors.length > 0) {
+                    const cfg = getTempAlertConfig();
+                    const conditionTextEl = document.getElementById('alert-condition-text');
+                    if (conditionTextEl) conditionTextEl.textContent = formatAlertConditionText(cfg);
+
+                    const matchedSensors = sensorsData.sensors.filter(sensor => {
+                        return matchesAlertCondition(sensor.temperature, cfg);
+                    });
+
+                    if (matchedSensors.length > 0) {
+                        showTemperatureAlert(matchedSensors);
+                    } else {
+                        // 全センサーが条件外に戻ったらアラートを非表示かつリセット
+                        if (alertActiveSensors.size > 0) {
+                            const alertEl = document.getElementById('temperature-alert');
+                            if (alertEl) {
+                                alertEl.classList.remove('show', 'pulse');
+                            }
+                            alertActiveSensors.clear();
+                            dismissedAlerts.clear(); // 温度が正常に戻ったら閉じたアラートもリセット
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error updating data:', error);
+            }
+        }
+
+        // デバウンス関数（グラフ更新の高速化、設定可能）
+        let chartUpdateTimeout = null;
+        let chartDebounceDelay = 100; // デフォルト100ms（調整可能）
+        function debouncedUpdateChart(customDelay = null) {
+            if (chartUpdateTimeout) {
+                clearTimeout(chartUpdateTimeout);
+            }
+            const delay = customDelay !== null ? customDelay : chartDebounceDelay;
+            chartUpdateTimeout = setTimeout(() => {
+                requestAnimationFrame(() => updateChart());
+            }, delay);
+        }
+        
+        // デバウンス時間を調整する関数（必要に応じて使用可能）
+        function setChartDebounceDelay(ms) {
+            if (typeof ms === 'number' && ms >= 0 && ms <= 1000) {
+                chartDebounceDelay = ms;
+                console.log(`グラフ更新のデバウンス時間を ${ms}ms に設定しました`);
+            }
+        }
+
+        // 間引き切り替えボタンの状態を更新
+        function updateDownsamplingButton() {
+            const btn = document.getElementById('downsample-toggle-btn');
+            const status = document.getElementById('downsample-status');
+            if (btn && status) {
+                if (downsamplingEnabled) {
+                    btn.classList.add('active');
+                    status.textContent = '間引き: ON';
+                } else {
+                    btn.classList.remove('active');
+                    status.textContent = '間引き: OFF';
+                }
+            }
+        }
+        
+        // 間引きのON/OFFを切り替え
+        function toggleDownsampling() {
+            downsamplingEnabled = !downsamplingEnabled;
+            updateDownsamplingButton();
+            // グラフを再読み込み（間引き設定を反映）
+            updateChart();
+        }
+        
+        // 初期化（一度だけ実行）
+        initChart();
+        updateDownsamplingButton(); // ボタンの初期状態を設定
+        updatePeriodDisplay(); // 表示期間を初期表示（データがなくても表示）
+        
+        // 更新ボタンのイベントリスナーを設定
+        const refreshBtn = document.getElementById('refresh-btn');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                manualRefresh();
+            });
+        }
+        
+        // 初期読み込み（プログレッシブローディング：センサーカードを先に表示）
+        let isInitializing = true;
+        (async () => {
+            console.log('[Dashboard] 初期ロード開始 - プログレッシブローディング');
+            const startTime = Date.now();
+            
+            try {
+                // Step 1: センサーリストを取得（高速、先に表示）
+                console.log('[Dashboard] Step 1: センサーリスト取得中...');
+                const sensorsData = await getSensorsData();
+                const step1Time = Date.now() - startTime;
+                console.log(`[Dashboard] Step 1完了 (${step1Time}ms)`);
+                
+                // センサーカードを即座に表示
+                const sensorsGrid = document.getElementById('sensors-grid');
+                if (sensorsData.sensors && sensorsData.sensors.length > 0) {
+                    sensorsGrid.innerHTML = sensorsData.sensors.map(sensor => createSensorCard(sensor)).join('');
+                    lastSensorCount = sensorsData.sensors.length;
+                    lastSensorIds = new Set(sensorsData.sensors.map(s => s.sensor_id));
+                } else {
+                    sensorsGrid.innerHTML = '<div class="card"><h2>センサー未接続</h2><p>ESPからのデータを受信していません</p></div>';
+                }
+                
+                // センサー数を更新
+                const sensorCountEl = document.getElementById('sensor-count');
+                if (sensorCountEl) {
+                    sensorCountEl.textContent = sensorsData.sensors?.length || 0;
+                }
+                
+                // ステータスを更新（軽量なものだけ）
+                const statusEsp32El = document.getElementById('status-esp32');
+                const statusEsp32TextEl = document.getElementById('status-esp32-text');
+                const isOnline = sensorsData.sensors && sensorsData.sensors.length > 0;
+                if (statusEsp32El) {
+                    statusEsp32El.className = isOnline ? 'status-dot online' : 'status-dot offline';
+                }
+                if (statusEsp32TextEl) {
+                    statusEsp32TextEl.textContent = isOnline 
+                        ? `ESP 接続中 (${sensorsData.sensors.length}台)` 
+                        : 'ESP 未接続';
+                }
+                
+                // Step 2: グラフデータを取得（バックグラウンド、非ブロッキング、センサーデータを渡して重複リクエストを防止）
+                console.log('[Dashboard] Step 2: グラフデータ取得中（非ブロッキング）...');
+                updateChart(sensorsData).then(() => {
+                    const totalTime = Date.now() - startTime;
+                    console.log(`[Dashboard] 初期ロード完了 - 総時間: ${totalTime}ms`);
+                    isInitializing = false;
+                }).catch((error) => {
+                    console.error('[Dashboard] グラフ読み込みエラー:', error);
+                    isInitializing = false;
+                });
+                
+            } catch (error) {
+                console.error('[Dashboard] 初期ロードエラー:', error);
+                isInitializing = false;
+                // エラー時は最小限の表示
+                const sensorsGrid = document.getElementById('sensors-grid');
+                if (sensorsGrid) {
+                    sensorsGrid.innerHTML = '<div class="card"><h2>エラー</h2><p>データの読み込みに失敗しました</p></div>';
+                }
+            }
+        })();
+
+        // 定期更新（初期化完了後に開始、重複を防止）
+        // センサーリストは10秒間キャッシュされるため、5秒ごとの更新でも効率的
+        let updateDataInterval = null;
+        let updateChartInterval = null;
+
+        // 初期化完了後に定期更新を開始（10秒後から開始）
+        setTimeout(() => {
+            updateDataInterval = setInterval(() => {
+                requestAnimationFrame(() => updateData());
+            }, 5000);      // 5秒ごとに温度値のみ更新（DOM再構築なし）
+
+            updateChartInterval = setInterval(() => {
+                debouncedUpdateChart();
+            }, 120000);    // 2分ごとにグラフ更新（デバウンス適用）
+        }, 10000);  // 初期化後10秒から開始
+
+        // ==================== ESP-NOW Master 情報パネル (2026-08-15 追加) ====================
+        // 子機スケッチ (ESP32_ESPNOW_Sensor.ino) の masterMAC[] にコピペするための
+        // MAC 表示 (人間形式 + C 配列形式)。「コピー」ボタンでクリップボード送信。
+
+        function macToCArray(mac) {
+            // "2C:BC:BB:4D:99:BC" → "{0x2C, 0xBC, 0xBB, 0x4D, 0x99, 0xBC}"
+            if (!mac) return '';
+            const parts = mac.split(':').map(b => '0x' + b.toUpperCase());
+            return '{' + parts.join(', ') + '}';
+        }
+
+        function formatAgoJa(iso) {
+            if (!iso) return '不明';
+            const t = new Date(iso.replace(' ', 'T') + '+09:00');
+            const sec = Math.max(0, Math.floor((Date.now() - t.getTime()) / 1000));
+            if (sec < 60) return '直近';
+            if (sec < 3600) return Math.floor(sec / 60) + ' 分前';
+            if (sec < 86400) return Math.floor(sec / 3600) + ' 時間前';
+            return Math.floor(sec / 86400) + ' 日前';
+        }
+
+        function copyToClipboard(text, btnEl) {
+            navigator.clipboard.writeText(text).then(() => {
+                if (btnEl) {
+                    const orig = btnEl.textContent;
+                    btnEl.textContent = '✅ コピー済';
+                    setTimeout(() => { btnEl.textContent = orig; }, 1500);
+                }
+            }).catch(err => {
+                alert('コピーに失敗: ' + err.message + '\n手動でコピーしてください:\n' + text);
+            });
+        }
+
+        async function loadMasters() {
+            const el = document.getElementById('masters-content');
+            if (!el) return;
+            try {
+                const res = await fetch('/api/masters');
+                const data = await res.json();
+                const masters = data.masters || [];
+                if (masters.length === 0) {
+                    el.innerHTML = '<div style="color:#999;padding:8px;">'
+                        + 'まだ Master 機の登録がありません。Master ESP32 の電源を入れ、'
+                        + 'USB Serial で Pi に接続されると自動的に表示されます。'
+                        + '</div>';
+                    return;
+                }
+                let html = '';
+                for (const m of masters) {
+                    const nick = m.nickname || '(表示名未設定)';
+                    const mac  = m.mac || '不明';
+                    const carr = macToCArray(mac);
+                    const ago  = formatAgoJa(m.last_seen);
+                    const safeNick = escapeHtml(nick);
+                    const safeId   = escapeHtml(m.device_id);
+                    const safeMac  = escapeHtml(mac);
+                    const safeCarr = escapeHtml(carr);
+                    html += '<div style="border:1px solid #ddd;border-radius:6px;padding:10px;margin-bottom:8px;background:#fafafa;">';
+                    html +=   '<div style="font-weight:600;font-size:1.05em;">' + safeNick
+                          +   ' <span style="color:#888;font-weight:normal;font-size:0.85em;">('
+                          +   safeId + ')</span></div>';
+                    html +=   '<div style="margin-top:6px;font-family:monospace;font-size:0.9em;">';
+                    html +=     '<span style="display:inline-block;min-width:80px;color:#666;">MAC</span> '
+                          +     '<span id="mac-txt-' + safeId + '">' + safeMac + '</span> '
+                          +     '<button onclick="copyToClipboard(\'' + mac.replace(/\'/g, '') + '\', this)" '
+                          +       'style="margin-left:6px;padding:2px 8px;font-size:0.85em;cursor:pointer;">📋 コピー</button>';
+                    html +=   '</div>';
+                    html +=   '<div style="margin-top:4px;font-family:monospace;font-size:0.9em;">';
+                    html +=     '<span style="display:inline-block;min-width:80px;color:#666;">C 配列</span> '
+                          +     '<span>' + safeCarr + '</span> '
+                          +     '<button onclick="copyToClipboard(\'' + carr.replace(/\'/g, '') + '\', this)" '
+                          +       'style="margin-left:6px;padding:2px 8px;font-size:0.85em;cursor:pointer;">📋 コピー</button>';
+                    html +=   '</div>';
+                    html +=   '<div style="margin-top:4px;font-size:0.85em;color:#666;">最終接続: ' + ago + '</div>';
+                    html += '</div>';
+                }
+                el.innerHTML = html;
+            } catch (e) {
+                el.innerHTML = '<div style="color:#c00;padding:8px;">Master 情報取得失敗: '
+                    + escapeHtml(e.message) + '</div>';
+            }
+        }
+
+        // 折りたたみトグル (2026-08-16 追加)
+        // 状態は localStorage.mastersCardOpen ('1' = 開、'0' = 閉、デフォルト閉)
+        function applyMastersCardState() {
+            const open = localStorage.getItem('mastersCardOpen') === '1';
+            const content = document.getElementById('masters-content');
+            const icon    = document.getElementById('masters-toggle-icon');
+            if (!content || !icon) return;
+            content.style.display = open ? '' : 'none';
+            icon.textContent = open ? '▼ 折りたたむ' : '▶ 展開';
+            if (open) loadMasters();   // 開いたときにデータ取得
+        }
+        function toggleMastersCard() {
+            const cur = localStorage.getItem('mastersCardOpen') === '1';
+            localStorage.setItem('mastersCardOpen', cur ? '0' : '1');
+            applyMastersCardState();
+        }
+        // 初期化
+        applyMastersCardState();
+        // 開いている間は 60 秒ごとに更新 (閉じているときは fetch しない)
+        setInterval(() => {
+            if (localStorage.getItem('mastersCardOpen') === '1') loadMasters();
+        }, 60000);
+        
+        // 手動更新ボタンの処理
+        async function manualRefresh() {
+            const btn = document.getElementById('refresh-btn');
+            if (!btn) return;
+            
+            // 既に更新中の場合は何もしない
+            if (btn.disabled) {
+                return;
+            }
+            
+            btn.disabled = true;
+            btn.textContent = '⏳ 更新中...';
+            
+            try {
+                // 現在の期間を維持してグラフを更新
+                await updateChart();
+                btn.disabled = false;
+                btn.textContent = '🔄 更新';
+            } catch (error) {
+                console.error('手動更新エラー:', error);
+                btn.disabled = false;
+                btn.textContent = '🔄 更新';
+            }
+        }
+    </script>
+</body>
+</html>

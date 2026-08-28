@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}温度モニター{% endblock %}</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: system-ui, -apple-system, "Hiragino Sans", "Meiryo", sans-serif;
+            margin: 0;
+            padding: 0;
+            background: #f5f7fa;
+            color: #333;
+        }
+        header {
+            background: #2c3e50;
+            color: white;
+            padding: 15px 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,.1);
+        }
+        header h1 { margin: 0; font-size: 20px; }
+        header a { color: #ecf0f1; text-decoration: none; }
+        header a:hover { text-decoration: underline; }
+        main { padding: 20px; max-width: 1200px; margin: 0 auto; }
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,.05);
+        }
+        h2 { margin-top: 0; color: #2c3e50; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #eee; }
+        th { background: #f8f9fa; font-weight: 600; }
+        tr:hover { background: #fafbfc; }
+        .temp {
+            font-size: 22px;
+            font-weight: 700;
+            color: #2980b9;
+        }
+        .temp-missing { color: #95a5a6; font-weight: normal; }
+        .battery-low { color: #e74c3c; font-weight: bold; }
+        .battery-normal { color: #27ae60; }
+        button, select, .btn {
+            padding: 8px 14px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            background: white;
+            cursor: pointer;
+            font-size: 14px;
+            color: #333;
+            text-decoration: none;
+            display: inline-block;
+        }
+        button:hover, .btn:hover { background: #ecf0f1; }
+        .btn-primary {
+            background: #3498db;
+            color: white;
+            border-color: #3498db;
+        }
+        .btn-primary:hover { background: #2980b9; }
+        .controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 15px; }
+        .chart-container { position: relative; height: 400px; margin-top: 10px; }
+        .chart-container-small { position: relative; height: 200px; margin-top: 10px; }
+        small { color: #7f8c8d; }
+        .empty {
+            text-align: center;
+            padding: 40px 20px;
+            color: #7f8c8d;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
+            margin-top: 15px;
+        }
+        .stat-item {
+            background: #f8f9fa;
+            padding: 12px;
+            border-radius: 6px;
+            text-align: center;
+        }
+        .stat-label { font-size: 12px; color: #7f8c8d; }
+        .stat-value { font-size: 18px; font-weight: 600; color: #2c3e50; margin-top: 4px; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>🌡 <a href="/">温度モニター</a></h1>
+    </header>
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>

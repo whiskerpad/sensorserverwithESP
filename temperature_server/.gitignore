@@ -1,0 +1,25 @@
+# データ・ログ (git 管理外)
+data/
+logs/
+*.db
+*.db-journal
+
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# 環境変数 (シークレット)
+.env
+
+# エディタ
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db

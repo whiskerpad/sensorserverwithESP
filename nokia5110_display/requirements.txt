@@ -1,0 +1,6 @@
+# Nokia 5110 display 用 pip 依存
+luma.lcd>=2.11.0
+Pillow>=10.0.0
+requests>=2.31.0
+RPi.GPIO>=0.7.1
+spidev>=3.6

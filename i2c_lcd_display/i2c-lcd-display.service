@@ -1,0 +1,25 @@
+[Unit]
+Description=I2C 20x4 LCD Display for Temperature Monitor
+After=network-online.target temperature-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/i2c_lcd_display
+Environment="PATH=/home/pi/i2c_lcd_display/venv/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PYTHONUNBUFFERED=1"
+# 実機で確認した I2C アドレスに合わせる (0x27 or 0x3F 等)
+Environment="LCD_I2C_ADDR=0x27"
+# 調整パラメータ:
+# Environment="LCD_REFRESH_SEC=2"
+# Environment="LCD_ROTATE_SEC=5"
+# Environment="LCD_SENSORS_PER_PAGE=2"
+ExecStart=/home/pi/i2c_lcd_display/venv/bin/python3 /home/pi/i2c_lcd_display/i2c_lcd_display.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

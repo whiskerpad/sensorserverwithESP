@@ -1,0 +1,61 @@
+# ============================================================
+#  ESPSARVER .gitignore
+#  秘密情報・ローカル生成物・エディタ副産物を GitHub から除外
+# ============================================================
+
+# ---- 秘密情報 (絶対に上げない) ----
+# 実運用の .env は必ずローカル生成。テンプレートは .env.example で共有。
+.env
+*.env
+!.env.example
+
+# 個別に発行される鍵・トークン
+*.key
+*.pem
+secrets.h
+secrets.json
+tailscale-authkey.txt
+
+# ---- Python 副産物 ----
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# venv (Pi 側インストーラが自動生成、GitHub には不要)
+venv/
+.venv/
+env/
+
+# ---- ローカルデータ (公開しない実データ) ----
+temperature_server_full/data/*.db
+temperature_server_full/data/*.db-journal
+temperature_server_full/data/*.db-wal
+temperature_server_full/data/*.db-shm
+temperature_server_full/logs/
+i2c_lcd_display/venv/
+
+# ---- Arduino ビルド副産物 ----
+build/
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# ---- エディタ ----
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ---- セッション/一時ファイル ----
+_synctest*.txt
+*.bak
+*.orig
+*.old
+*.log

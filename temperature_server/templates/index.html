@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}ダッシュボード - 温度モニター{% endblock %}
+{% block content %}
+
+<div class="card">
+    <h2>登録デバイスの最新状態</h2>
+
+    {% if devices %}
+    <table>
+        <thead>
+            <tr>
+                <th>デバイス</th>
+                <th>センサー</th>
+                <th>最新温度</th>
+                <th>電池</th>
+                <th>RSSI</th>
+                <th>受信時刻</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for d in devices %}
+            {% for s in d.sensors %}
+            <tr>
+                <td>
+                    <strong>{{ s.name if s.name else d.device_id }}</strong>
+                    {% if s.name %}<br><small>{{ d.device_id }}</small>{% endif %}
+                    {% if s.ip_address %}<br><small>{{ s.ip_address }}</small>{% endif %}
+                </td>
+                <td>
+                    #{{ s.sensor_index if s.sensor_index is not none else '-' }}
+                    {% if s.sensor_addr %}<br><small>{{ s.sensor_addr }}</small>{% endif %}
+                </td>
+                <td class="temp">
+                    {% if s.temp_c is not none %}
+                        {{ '%.2f'|format(s.temp_c) }} ℃
+                    {% else %}
+                        <span class="temp-missing">— 欠測</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if s.voltage is not none %}
+                        {{ '%.2f'|format(s.voltage) }} V
+                        {% if s.battery_pct is not none %}
+                            <br>
+                            <small class="{% if s.battery_pct < 20 %}battery-low{% else %}battery-normal{% endif %}">
+                                {{ '%.0f'|format(s.battery_pct) }}%
+                                {% if s.is_battery %}(電池){% endif %}
+                            </small>
+                        {% endif %}
+                    {% else %}
+                        —
+                    {% endif %}
+                </td>
+                <td>
+                    {% if s.rssi_dbm is not none %}
+                        {{ s.rssi_dbm }} dBm
+                    {% else %}
+                        —
+                    {% endif %}
+                </td>
+                <td><small>{{ s.received_at }}</small></td>
+                <td>
+                    {% if loop.first %}
+                    <a class="btn btn-primary" href="/sensor/{{ d.device_id }}">詳細</a>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        {% endfor %}
+        </tbody>
+    </table>
+
+    <p style="margin-top: 15px;"><small>
+        表示は最新値のみ。トレンドグラフは各デバイスの「詳細」から。
+        自動更新はしません (ページリロードで最新取得)。
+    </small></p>
+    {% else %}
+    <div class="empty">
+        <p>まだデータが受信されていません。</p>
+        <p><small>
+            ESP8266 が <code>POST /api/temperature</code> にデータを送信するのを待っています。<br>
+            AP に接続 (静的IP または DHCP) 後、送信が届くはずです。
+        </small></p>
+    </div>
+    {% endif %}
+</div>
+
+<div class="card">
+    <h2>API エンドポイント</h2>
+    <table>
+        <tr><td><code>POST /api/temperature</code></td><td>ESP (静的IP版) からの受信 (認証なし・主流)</td></tr>
+        <tr><td><code>POST /api/sensor</code></td><td>ESP (STEP2版) からの受信 (認証なし・レガシー)</td></tr>
+        <tr><td><code>GET /api/sensors</code></td><td>全デバイス最新値 JSON</td></tr>
+        <tr><td><code>GET /api/sensor/&lt;device_id&gt;/readings?hours=24</code></td><td>時間範囲データ JSON</td></tr>
+        <tr><td><code>GET /api/export/&lt;device_id&gt;?hours=24</code></td><td>CSV ダウンロード</td></tr>
+        <tr><td><code>GET /health</code></td><td>ヘルスチェック (認証なし)</td></tr>
+    </table>
+</div>
+
+{% endblock %}

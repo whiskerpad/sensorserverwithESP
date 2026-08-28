@@ -1,0 +1,21 @@
+[Unit]
+Description=ESP8266 Temperature Monitor (Flask)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/temperature_server
+Environment=PYTHONUNBUFFERED=1
+# .env の値で環境変数を上書き (存在しなくてもエラーにしない)
+EnvironmentFile=-/home/pi/temperature_server/.env
+ExecStart=/home/pi/temperature_server/venv/bin/python /home/pi/temperature_server/run.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ビデオストリーミング</title>
+    <link rel="icon" href="data:,">
+    <style>
+        body { margin: 0; padding: 20px; font-family: sans-serif; background: #f0f0f0; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .nav { text-align: center; margin-bottom: 30px; }
+        .nav a { margin: 0 10px; padding: 10px 20px; background: #667eea; color: white; text-decoration: none; border-radius: 5px; }
+        .nav a.active { background: #764ba2; }
+        .video-container { background: white; border-radius: 10px; padding: 20px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+        video { width: 100%; height: auto; border-radius: 8px; }
+        .controls { margin-top: 20px; display: flex; gap: 10px; }
+        select { padding: 10px; border: 1px solid #ddd; border-radius: 5px; }
+        button { padding: 10px 20px; background: #4caf50; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        button:hover { background: #45a049; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="nav">
+            <a href="/">ダッシュボード</a>
+            <a href="/stream" class="active">ビデオストリーミング</a>
+            <a href="/management">管理画面</a>
+        </div>
+
+        <div class="video-container">
+            <h2>ライブカメラ</h2>
+            <canvas id="video-canvas" style="width: 100%; border-radius: 8px; display: none;"></canvas>
+            <div id="error-message" style="display: none; padding: 20px; background: #ffebee; color: #c62828; border-radius: 8px; margin-bottom: 20px;">
+                カメラに接続できませんでした。カメラが接続されているか確認してください。
+            </div>
+            
+            <div class="controls">
+                <label>解像度:</label>
+                <select id="resolution">
+                    <option value="360p">360p</option>
+                    <option value="720p" selected>720p</option>
+                    <option value="1080p">1080p</option>
+                </select>
+                <button onclick="changeResolution()">適用</button>
+                <button id="toggle-btn" onclick="toggleStream()">配信開始</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // バージョン管理（キャッシュ対策）
+        const STREAM_VERSION = '6.0';
+        console.log('Stream page loaded, version:', STREAM_VERSION);
+        
+        let isStreaming = false;
+        let streamController = null;
+        const videoCanvas = document.getElementById('video-canvas');
+        const ctx = videoCanvas.getContext('2d');
+        const errorMessage = document.getElementById('error-message');
+        const toggleBtn = document.getElementById('toggle-btn');
+        
+        // Canvasサイズを設定
+        function setupCanvas() {
+            const container = videoCanvas.parentElement;
+            const width = container.clientWidth - 40;
+            const height = Math.floor(width * 9 / 16);
+            videoCanvas.width = width;
+            videoCanvas.height = height;
+        }
+
+        // MJPEGストリームを読み取り、Canvasに描画（高速化・メモリ最適化）
+        let pendingImage = null; // 描画待ちの画像を1つだけ保持
+        let lastFrameTime = 0;
+        const TARGET_FPS = 30;
+        const FRAME_INTERVAL = 1000 / TARGET_FPS;
+        
+        async function streamFrames() {
+            try {
+                const streamUrl = '/video_feed?t=' + new Date().getTime() + '&v=' + STREAM_VERSION;
+                console.log('ストリーム開始:', streamUrl);
+                
+                const response = await fetch(streamUrl);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const reader = response.body.getReader();
+                streamController = reader;
+                let buffer = new Uint8Array(0);
+                
+                // 境界マーカーを事前エンコード（高速化）
+                const boundary = new TextEncoder().encode('--frame\r\n');
+                const headerSeparator = new TextEncoder().encode('\r\n\r\n');
+                
+                while (isStreaming) {
+                    const {done, value} = await reader.read();
+                    if (done) {
+                        console.log('ストリーム終了');
+                        break;
+                    }
+                    
+                    // バッファに追加（より効率的な方法）
+                    const newBuffer = new Uint8Array(buffer.length + value.length);
+                    newBuffer.set(buffer, 0);
+                    newBuffer.set(value, buffer.length);
+                    buffer = newBuffer;
+                    
+                    // MJPEG境界を探す: --frame\r\n
+                    let boundaryIndex = findBytes(buffer, boundary);
+                    
+                    while (boundaryIndex !== -1) {
+                        // 次の境界を探す
+                        const nextBoundary = findBytes(buffer, boundary, boundaryIndex + boundary.length);
+                        if (nextBoundary === -1) {
+                            // 次の境界が見つからない場合、バッファを保持
+                            buffer = buffer.slice(boundaryIndex);
+                            break;
+                        }
+                        
+                        // フレームデータを抽出（--frame\r\n から次の --frame\r\n まで）
+                        const frameStart = boundaryIndex + boundary.length;
+                        const frameEnd = nextBoundary;
+                        const frameData = buffer.slice(frameStart, frameEnd);
+                        
+                        // Content-Type と Content-Length をスキップしてJPEGデータを取得
+                        const headerEnd = findBytes(frameData, headerSeparator);
+                        if (headerEnd !== -1) {
+                            const jpegStart = headerEnd + 4;
+                            const jpegData = frameData.slice(jpegStart);
+                            
+                            // FPS制御（フレームスキップ）
+                            const now = performance.now();
+                            if (now - lastFrameTime >= FRAME_INTERVAL) {
+                                lastFrameTime = now;
+                                
+                                // 前の画像のURLを解放（メモリリーク防止）
+                                if (pendingImage && pendingImage.src && pendingImage.src.startsWith('blob:')) {
+                                    URL.revokeObjectURL(pendingImage.src);
+                                }
+                                
+                                // Blobを作成して画像として読み込む
+                                const blob = new Blob([jpegData], {type: 'image/jpeg'});
+                                const img = new Image();
+                                img.onload = function() {
+                                    // requestAnimationFrameで描画を最適化
+                                    requestAnimationFrame(() => {
+                                        if (isStreaming) {
+                                            ctx.drawImage(img, 0, 0, videoCanvas.width, videoCanvas.height);
+                                        }
+                                        // 描画後にURLを解放
+                                        if (img.src && img.src.startsWith('blob:')) {
+                                            URL.revokeObjectURL(img.src);
+                                        }
+                                    });
+                                };
+                                img.onerror = function() {
+                                    console.warn('画像読み込みエラー');
+                                    if (img.src && img.src.startsWith('blob:')) {
+                                        URL.revokeObjectURL(img.src);
+                                    }
+                                };
+                                img.src = URL.createObjectURL(blob);
+                                pendingImage = img;
+                            }
+                        }
+                        
+                        // 処理済みデータを削除
+                        buffer = buffer.slice(nextBoundary);
+                        boundaryIndex = findBytes(buffer, boundary);
+                    }
+                }
+            } catch (error) {
+                console.error('ストリームエラー:', error);
+                videoCanvas.style.display = 'none';
+                errorMessage.style.display = 'block';
+                isStreaming = false;
+                toggleBtn.textContent = '配信開始';
+            } finally {
+                // クリーンアップ：メモリリーク防止
+                if (pendingImage && pendingImage.src && pendingImage.src.startsWith('blob:')) {
+                    URL.revokeObjectURL(pendingImage.src);
+                }
+            }
+        }
+        
+        // バイト配列内でパターンを検索
+        function findBytes(buffer, pattern, startIndex = 0) {
+            for (let i = startIndex; i <= buffer.length - pattern.length; i++) {
+                let match = true;
+                for (let j = 0; j < pattern.length; j++) {
+                    if (buffer[i + j] !== pattern[j]) {
+                        match = false;
+                        break;
+                    }
+                }
+                if (match) {
+                    return i;
+                }
+            }
+            return -1;
+        }
+
+        // ページ読み込み時に自動でストリームを開始
+        window.addEventListener('DOMContentLoaded', function() {
+            console.log('DOMContentLoaded - ストリームを開始します');
+            setupCanvas();
+            setTimeout(function() {
+                startStream();
+            }, 100);
+        });
+        
+        // ウィンドウリサイズ時にCanvasサイズを更新
+        window.addEventListener('resize', function() {
+            setupCanvas();
+        });
+
+        function startStream() {
+            if (!isStreaming) {
+                isStreaming = true;
+                videoCanvas.style.display = 'block';
+                errorMessage.style.display = 'none';
+                toggleBtn.textContent = '配信停止';
+                streamFrames();
+            }
+        }
+
+        function changeResolution() {
+            const res = document.getElementById('resolution').value;
+            console.log('解像度を変更します:', res);
+            
+            // ストリーミング中は一度停止
+            const wasStreaming = isStreaming;
+            if (wasStreaming) {
+                isStreaming = false;
+                if (streamController) {
+                    streamController.cancel();
+                }
+                videoCanvas.style.display = 'none';
+                fetch('/video_feed/stop').catch(() => {});
+            }
+            
+            fetch('/video_feed/resolution', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ resolution: res })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    console.log('解像度変更完了:', res);
+                    // フレームバッファが新しい解像度で安定するまで待機
+                    setTimeout(() => {
+                        if (wasStreaming) {
+                            startStream();
+                        }
+                        console.log(`Resolution changed to: ${res}`);
+                    }, 1200);
+                } else {
+                    alert('解像度の変更に失敗しました: ' + (data.message || '不明なエラー'));
+                    if (wasStreaming) {
+                        isStreaming = true;
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('エラー:', error);
+                alert('解像度の変更中にエラーが発生しました');
+                if (wasStreaming) {
+                    isStreaming = true;
+                }
+            });
+        }
+
+        function toggleStream() {
+            if (isStreaming) {
+                // ストリームを停止
+                console.log('ストリームを停止します');
+                isStreaming = false;
+                if (streamController) {
+                    streamController.cancel();
+                }
+                videoCanvas.style.display = 'none';
+                
+                // メモリクリーンアップ
+                if (pendingImage && pendingImage.src && pendingImage.src.startsWith('blob:')) {
+                    URL.revokeObjectURL(pendingImage.src);
+                    pendingImage = null;
+                }
+                
+                fetch('/video_feed/stop')
+                    .then(() => {
+                        errorMessage.style.display = 'none';
+                        toggleBtn.textContent = '配信開始';
+                        console.log('ストリーム停止完了');
+                    })
+                    .catch(error => {
+                        console.error('ストリーム停止エラー:', error);
+                    });
+            } else {
+                // ストリームを開始
+                console.log('ストリームを開始します');
+                lastFrameTime = 0; // フレームタイマーをリセット
+                startStream();
+            }
+        }
+    </script>
+</body>
+</html>

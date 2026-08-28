@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+{% block title %}{{ device_id }} - 温度モニター{% endblock %}
+{% block content %}
+
+<div class="card">
+    <h2 id="device-title">{{ device_id }} — 詳細トレンド</h2>
+    <p id="device-subtitle" style="color:#7f8c8d;margin-top:-8px;"></p>
+
+    <div class="controls">
+        <label>期間:
+            <select id="hours-select">
+                <option value="1">1 時間</option>
+                <option value="6">6 時間</option>
+                <option value="24" selected>24 時間</option>
+                <option value="72">3 日</option>
+                <option value="168">7 日</option>
+                <option value="720">30 日</option>
+                <option value="8760">1 年</option>
+            </select>
+        </label>
+        <button id="reload-btn" class="btn">更新</button>
+        <button id="export-btn" class="btn">CSV ダウンロード</button>
+        <a class="btn" href="/">← ダッシュボードへ戻る</a>
+        <span id="loading-msg" style="color: #7f8c8d;"></span>
+    </div>
+
+    <h3 style="margin-top:0;">温度</h3>
+    <div class="chart-container">
+        <canvas id="tempChart"></canvas>
+    </div>
+
+    <h3>電源電圧 / 電池残量</h3>
+    <div class="chart-container-small">
+        <canvas id="battChart"></canvas>
+    </div>
+
+    <h3>統計</h3>
+    <div id="stats" class="stats-grid"></div>
+
+    <p style="margin-top: 20px;"><small>
+        受信ごとに 1 分間隔でグラフ自動更新 (`setInterval`)。手動で「更新」ボタンでも即時更新可。
+    </small></p>
+</div>
+
+<script>
+const deviceId = {{ device_id | tojson }};
+let tempChart = null;
+let battChart = null;
+
+async function loadData() {
+    const hours = document.getElementById('hours-select').value;
+    const msgEl = document.getElementById('loading-msg');
+    msgEl.textContent = '読込中…';
+    try {
+        const res = await fetch(`/api/sensor/${encodeURIComponent(deviceId)}/readings?hours=${hours}`);
+        if (!res.ok) {
+            msgEl.textContent = 'エラー: HTTP ' + res.status;
+            return;
+        }
+        const data = await res.json();
+        renderHeader(data);
+        renderTempChart(data);
+        renderBattChart(data);
+        renderStats(data);
+        msgEl.textContent = `${data.count} 件`;
+    } catch (e) {
+        msgEl.textContent = 'エラー: ' + e.message;
+    }
+}
+
+function renderHeader(data) {
+    // 最新レコードから name/ip_address を拾ってタイトルに反映
+    const readings = data.readings || [];
+    if (readings.length === 0) return;
+    const last = readings[readings.length - 1];
+    if (last.name) {
+        document.getElementById('device-title').textContent = `${last.name} — 詳細トレンド`;
+        const parts = [`device_id: ${deviceId}`];
+        if (last.ip_address) parts.push(`IP: ${last.ip_address}`);
+        document.getElementById('device-subtitle').textContent = parts.join(' / ');
+    } else if (last.ip_address) {
+        document.getElementById('device-subtitle').textContent = `IP: ${last.ip_address}`;
+    }
+}
+
+function renderTempChart(data) {
+    const readings = data.readings || [];
+    // センサー index ごとにデータを分割
+    const bySensor = {};
+    readings.forEach(r => {
+        const key = (r.sensor_index === null || r.sensor_index === undefined)
+            ? 'unknown'
+            : `#${r.sensor_index}${r.sensor_addr ? ' (' + r.sensor_addr.slice(-6) + ')' : ''}`;
+        if (!bySensor[key]) bySensor[key] = [];
+        // temp_c が null (欠測) の場合は null のまま渡す (Chart.js が線を切る)
+        bySensor[key].push({ x: r.received_at, y: r.temp_c });
+    });
+
+    const palette = ['#3498db', '#e74c3c', '#27ae60', '#f39c12', '#9b59b6', '#1abc9c', '#e67e22'];
+    const datasets = Object.entries(bySensor).map(([name, points], i) => ({
+        label: name,
+        data: points,
+        borderColor: palette[i % palette.length],
+        backgroundColor: palette[i % palette.length] + '20',
+        tension: 0.15,
+        pointRadius: 1,
+        spanGaps: false,  // null は line を切る
+    }));
+
+    if (tempChart) tempChart.destroy();
+    tempChart = new Chart(document.getElementById('tempChart'), {
+        type: 'line',
+        data: { datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            parsing: false,
+            scales: {
+                x: {
+                    type: 'category',
+                    ticks: { maxTicksLimit: 12, maxRotation: 45, minRotation: 45 }
+                },
+                y: {
+                    title: { display: true, text: '温度 (℃)' }
+                }
+            },
+            plugins: {
+                legend: { position: 'bottom' },
+                tooltip: {
+                    callbacks: {
+                        label: (ctx) => {
+                            const v = ctx.parsed.y;
+                            return `${ctx.dataset.label}: ${v === null ? '欠測' : v.toFixed(2) + ' ℃'}`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+function renderBattChart(data) {
+    const readings = data.readings || [];
+    // 同一 timestamp で複数センサー分あるので重複排除 (voltage は device 単位)
+    const seen = new Set();
+    const points = [];
+    readings.forEach(r => {
+        if (r.voltage === null || r.voltage === undefined) return;
+        const key = r.received_at;
+        if (seen.has(key)) return;
+        seen.add(key);
+        points.push({ x: r.received_at, y: r.voltage });
+    });
+
+    if (battChart) battChart.destroy();
+    if (points.length === 0) return;
+
+    battChart = new Chart(document.getElementById('battChart'), {
+        type: 'line',
+        data: {
+            datasets: [{
+                label: '電源電圧 (V)',
+                data: points,
+                borderColor: '#f39c12',
+                backgroundColor: '#f39c1220',
+                tension: 0.2,
+                pointRadius: 1,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            parsing: false,
+            scales: {
+                x: {
+                    type: 'category',
+                    ticks: { maxTicksLimit: 10, maxRotation: 45, minRotation: 45 }
+                },
+                y: {
+                    title: { display: true, text: '電圧 (V)' },
+                    suggestedMin: 2.5,
+                    suggestedMax: 5.0
+                }
+            },
+            plugins: { legend: { position: 'bottom' } }
+        }
+    });
+}
+
+function renderStats(data) {
+    const stats = data.stats || [];
+    const el = document.getElementById('stats');
+    if (stats.length === 0) {
+        el.innerHTML = '<p><small>期間内にデータなし</small></p>';
+        return;
+    }
+    el.innerHTML = stats.map(s => `
+        <div class="stat-item">
+            <div class="stat-label">センサー #${s.sensor_index} (${s.count} 件)</div>
+            <div class="stat-value">${s.avg_temp?.toFixed(2) ?? '-'} ℃ (平均)</div>
+            <div style="font-size:12px;color:#7f8c8d;margin-top:6px;">
+                最低 ${s.min_temp?.toFixed(2) ?? '-'} ℃ / 最高 ${s.max_temp?.toFixed(2) ?? '-'} ℃
+            </div>
+        </div>
+    `).join('');
+}
+
+document.getElementById('hours-select').addEventListener('change', loadData);
+document.getElementById('reload-btn').addEventListener('click', loadData);
+document.getElementById('export-btn').addEventListener('click', () => {
+    const hours = document.getElementById('hours-select').value;
+    window.location.href = `/api/export/${encodeURIComponent(deviceId)}?hours=${hours}`;
+});
+
+loadData();
+setInterval(loadData, 60000);  // 1 分毎に自動更新
+</script>
+
+{% endblock %}

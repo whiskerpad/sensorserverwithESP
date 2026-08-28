@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理画面</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', sans-serif; background: #f5f5f5; padding: 15px; }
+        .container { max-width: 1400px; margin: 0 auto; }
+        .nav { display: flex; gap: 10px; justify-content: center; margin-bottom: 20px; flex-wrap: wrap; }
+        .nav a { padding: 10px 20px; background: #667eea; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; transition: 0.3s; }
+        .nav a.active { background: #764ba2; }
+        .nav a:hover { opacity: 0.9; }
+        h1 { text-align: center; color: #333; margin-bottom: 25px; }
+        .tab-buttons { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+        .tab-btn { padding: 10px 16px; border: 2px solid #ddd; background: white; color: #333; cursor: pointer; border-radius: 6px; font-weight: 600; transition: 0.3s; }
+        .tab-btn.active { background: #667eea; color: white; border-color: #667eea; }
+        .tab-btn:hover { border-color: #667eea; }
+        .panel { background: white; border-radius: 10px; padding: 20px; margin-bottom: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); display: none; }
+        .panel.active { display: block; }
+        .panel h3 { color: #667eea; margin-bottom: 15px; font-size: 1.2em; }
+        .button-group { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 15px; }
+        button { padding: 10px 18px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; transition: 0.3s; font-size: 0.95em; }
+        .btn-primary { background: #4caf50; color: white; }
+        .btn-primary:hover { background: #45a049; }
+        .btn-danger { background: #f44336; color: white; }
+        .btn-danger:hover { background: #da190b; }
+        .btn-info { background: #2196F3; color: white; }
+        .btn-info:hover { background: #0b7dda; }
+        .btn-small { padding: 6px 12px; font-size: 0.85em; }
+        .status-box { background: #f9f9f9; padding: 12px 15px; border-left: 4px solid #4caf50; margin: 10px 0; border-radius: 4px; }
+        .status-box.warn { border-left-color: #ff9800; }
+        .status-box.error { border-left-color: #f44336; }
+        .status-value { font-size: 1.3em; font-weight: bold; color: #667eea; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+        @media (max-width: 768px) { .grid-2 { grid-template-columns: 1fr; } }
+        .sensor-card { background: #f9f9f9; padding: 12px; border-radius: 6px; border: 1px solid #eee; margin: 8px 0; }
+        .sensor-card input { width: 100%; padding: 6px; margin: 6px 0; border: 1px solid #ddd; border-radius: 4px; }
+        .log-viewer { background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 6px; font-family: 'Courier New', monospace; font-size: 0.9em; max-height: 300px; overflow-y: auto; }
+        .log-error { color: #f44336; }
+        .log-warn { color: #ff9800; }
+        .log-info { color: #4caf50; }
+        .input-group { margin-bottom: 15px; }
+        input[type="text"], input[type="number"], select { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.95em; }
+        label { display: block; margin-bottom: 5px; color: #333; font-weight: 600; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; }
+        .modal.show { display: flex; }
+        .modal-content { background: white; padding: 30px; border-radius: 10px; max-width: 500px; width: 90%; }
+        .modal-content h2 { margin-bottom: 20px; color: #667eea; }
+        .chart { width: 100%; height: 200px; background: #f0f0f0; border-radius: 6px; margin-top: 10px; display: flex; align-items: flex-end; gap: 2px; padding: 10px; }
+        .chart-bar { flex: 1; background: #667eea; border-radius: 3px 3px 0 0; min-height: 20px; }
+        .success-msg { background: #e8f5e9; color: #2e7d32; padding: 12px; border-radius: 6px; margin-bottom: 15px; border-left: 4px solid #4caf50; }
+        .error-msg { background: #ffebee; color: #c62828; padding: 12px; border-radius: 6px; margin-bottom: 15px; border-left: 4px solid #f44336; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="nav">
+            <a href="/">ダッシュボード</a>
+            <a href="/stream">ビデオストリーミング</a>
+            <a href="/management" class="active">管理画面</a>
+        </div>
+
+        <h1>🛠️ システム管理</h1>
+
+        <div class="tab-buttons">
+            <button class="tab-btn active" onclick="switchTab('status')">📊 ステータス</button>
+            <button class="tab-btn" onclick="switchTab('sensors')">📡 センサー管理</button>
+            <button class="tab-btn" onclick="switchTab('nicknames')">🏷️ 表示名管理</button>
+            <button class="tab-btn" onclick="switchTab('performance')">⚡ パフォーマンス</button>
+            <button class="tab-btn" onclick="switchTab('alerts')">🚨 アラート設定</button>
+            <button class="tab-btn" onclick="switchTab('logs')">📋 ログ</button>
+            <button class="tab-btn" onclick="switchTab('data')">💾 データ管理</button>
+        </div>
+
+        <!-- ステータスタブ -->
+        <div id="status" class="panel active">
+            <h3>🔍 システムステータス</h3>
+            <div id="status-content">読み込み中...</div>
+        </div>
+
+        <!-- センサー管理タブ -->
+        <div id="sensors" class="panel">
+            <h3>📡 接続センサー</h3>
+            <div class="button-group">
+                <button class="btn-primary" onclick="refreshSensors()">🔄 更新</button>
+                <button class="btn-info" onclick="showAddSensorModal()">➕ センサー追加</button>
+            </div>
+            <div id="sensors-content">読み込み中...</div>
+        </div>
+
+        <!-- 表示名管理タブ (2026-07-17 追加) -->
+        <div id="nicknames" class="panel">
+            <h3>🏷️ デバイス表示名管理</h3>
+            <p style="font-size:0.9em;color:#555;margin-bottom:12px;">
+                センサーの device_id (例: <code>ESP8266_ip208_30sec</code>) に
+                分かりやすい表示名 (例: <code>冷却塔1</code>、<code>外気温</code>) を割り当てます。
+                ダッシュボードでは表示名が優先的に使われます。
+            </p>
+            <div class="button-group">
+                <button class="btn-primary" onclick="loadNicknames()">🔄 更新</button>
+            </div>
+            <div id="nicknames-content">読み込み中...</div>
+        </div>
+
+        <!-- パフォーマンスタブ -->
+        <div id="performance" class="panel">
+            <h3>⚡ パフォーマンス監視</h3>
+            <!-- 2026-08-16 簡易表示化: プレースホルダのチャートを撤廃し、
+                 /api/status から取得した現在値をテキスト + 横バーで表示 -->
+            <div class="status-box">
+                <strong>CPU 使用率:</strong>
+                <span id="perf-cpu" class="status-value">-</span>
+                <div style="margin-top:4px;height:8px;background:#eee;border-radius:4px;overflow:hidden;">
+                    <div id="perf-cpu-bar" style="height:100%;width:0%;background:#4caf50;transition:width 0.3s;"></div>
+                </div>
+            </div>
+            <div class="status-box">
+                <strong>メモリ使用率:</strong>
+                <span id="perf-mem" class="status-value">-</span>
+                <span id="perf-mem-detail" style="color:#666;font-size:0.9em;margin-left:8px;"></span>
+                <div style="margin-top:4px;height:8px;background:#eee;border-radius:4px;overflow:hidden;">
+                    <div id="perf-mem-bar" style="height:100%;width:0%;background:#2196f3;transition:width 0.3s;"></div>
+                </div>
+            </div>
+            <div class="status-box">
+                <strong>ディスク:</strong> <span id="perf-disk" class="status-value">-</span>
+                <div style="margin-top:4px;height:8px;background:#eee;border-radius:4px;overflow:hidden;">
+                    <div id="perf-disk-bar" style="height:100%;width:0%;background:#ff9800;transition:width 0.3s;"></div>
+                </div>
+            </div>
+            <div class="status-box">
+                <strong>ネットワーク遅延:</strong> <span id="network-ping" class="status-value">-</span>
+            </div>
+            <button class="btn-info" onclick="measurePerformance()">🔄 更新</button>
+        </div>
+
+        <!-- アラート設定タブ (2026-08-22 追加、localStorage 保存) -->
+        <div id="alerts" class="panel">
+            <h3>🚨 温度アラート設定</h3>
+            <p style="font-size:0.9em;color:#555;margin-bottom:12px;">
+                ダッシュボードで表示される温度アラートの発火条件を設定します。<br>
+                設定は <strong>このブラウザ内 (localStorage)</strong> に保存され、
+                サーバー再起動しても保持されます。他のブラウザ / 端末で開いた場合は
+                それぞれ別途設定してください (全センサー共通、1 条件)。
+            </p>
+
+            <div id="alert-settings-msg"></div>
+
+            <div class="input-group">
+                <label for="alert-threshold-input">閾値温度 (℃):</label>
+                <input type="number" id="alert-threshold-input" step="0.1" value="5.0"
+                       style="max-width:200px;">
+            </div>
+
+            <div class="input-group">
+                <label for="alert-condition-select">発火条件:</label>
+                <select id="alert-condition-select" style="max-width:200px;">
+                    <option value="below">閾値 以下 でアラート</option>
+                    <option value="above">閾値 以上 でアラート</option>
+                </select>
+            </div>
+
+            <div class="status-box" id="alert-preview" style="margin-top:15px;">
+                <strong>現在の設定:</strong>
+                <span class="status-value" id="alert-preview-text">-</span>
+            </div>
+
+            <div class="button-group" style="margin-top:15px;">
+                <button class="btn-primary" onclick="saveAlertSettings()">💾 保存</button>
+                <button class="btn-info" onclick="loadAlertSettings()">🔄 再読込</button>
+                <button class="btn-danger btn-small" onclick="resetAlertSettings()">初期値に戻す (5℃ 以下)</button>
+            </div>
+        </div>
+
+        <!-- ログタブ -->
+        <div id="logs" class="panel">
+            <h3>📋 システムログ</h3>
+            <div class="button-group">
+                <button class="btn-info" onclick="loadLogs()">🔄 更新</button>
+                <select id="log-filter" onchange="filterLogs(this.value)" style="width: auto; padding: 8px;">
+                    <option value="">全て</option>
+                    <option value="error">エラー</option>
+                    <option value="warn">警告</option>
+                    <option value="info">情報</option>
+                </select>
+                <button class="btn-primary" onclick="exportLogs()">📥 エクスポート</button>
+            </div>
+            <div class="log-viewer" id="log-content">ログを読み込み中...</div>
+        </div>
+
+        <!-- データ管理タブ -->
+        <div id="data" class="panel">
+            <h3>💾 データ管理</h3>
+            <div class="input-group">
+                <label>古いデータ削除（指定日数以前）</label>
+                <div style="display: flex; gap: 10px;">
+                    <input type="number" id="days-old" min="1" max="365" value="30" style="flex: 1;" placeholder="日数">
+                    <button class="btn-danger" onclick="deleteOldData()">削除</button>
+                </div>
+            </div>
+            <div id="data-message"></div>
+            <div class="button-group">
+                <button class="btn-primary" onclick="backupDatabase()">💾 バックアップ作成</button>
+                <button class="btn-info" onclick="exportCSV()">📊 CSV エクスポート</button>
+            </div>
+        </div>
+
+        <!-- テストセンサータブ -->
+    </div>
+
+    <!-- センサー追加モーダル -->
+    <div id="add-sensor-modal" class="modal">
+        <div class="modal-content">
+            <h2>センサーを追加</h2>
+            <div class="input-group">
+                <label>センサーID</label>
+                <input type="text" id="sensor-id" placeholder="例: ESP32_NEW_01">
+            </div>
+            <div class="input-group">
+                <label>センサー名</label>
+                <input type="text" id="sensor-name" placeholder="例: 居間">
+            </div>
+            <div class="button-group">
+                <button class="btn-primary" onclick="addSensor()">追加</button>
+                <button class="btn-info" onclick="closeModal('add-sensor-modal')">キャンセル</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function switchTab(tabName) {
+            document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(tabName).classList.add('active');
+            event.target.classList.add('active');
+            
+            if (tabName === 'status') loadStatus();
+            if (tabName === 'sensors') refreshSensors();
+            if (tabName === 'nicknames') loadNicknames();
+            if (tabName === 'logs') loadLogs();
+            // 2026-08-16: performance タブでも自動更新
+            if (tabName === 'performance') measurePerformance();
+            // 2026-08-22: アラート設定タブを開いたら現在値を読み込む
+            if (tabName === 'alerts') loadAlertSettings();
+        }
+
+        // ==================== 温度アラート設定 (2026-08-22 追加、localStorage) ====================
+        //  ダッシュボードは 'tempAlertConfig' キーから読む。
+        //  形式: { threshold: 5.0, condition: 'below' | 'above' }
+        //  below = X℃ 以下でアラート、above = X℃ 以上でアラート。
+        const TEMP_ALERT_DEFAULT = { threshold: 5.0, condition: 'below' };
+
+        function readAlertConfig() {
+            try {
+                const raw = localStorage.getItem('tempAlertConfig');
+                if (!raw) return { ...TEMP_ALERT_DEFAULT };
+                const cfg = JSON.parse(raw);
+                const t = parseFloat(cfg.threshold);
+                const c = (cfg.condition === 'above') ? 'above' : 'below';
+                if (isNaN(t)) return { ...TEMP_ALERT_DEFAULT };
+                return { threshold: t, condition: c };
+            } catch (e) {
+                return { ...TEMP_ALERT_DEFAULT };
+            }
+        }
+
+        function renderAlertPreview(cfg) {
+            const op = (cfg.condition === 'above') ? '以上' : '以下';
+            const el = document.getElementById('alert-preview-text');
+            if (el) el.textContent = `${cfg.threshold}℃ ${op} でアラート発火`;
+        }
+
+        function loadAlertSettings() {
+            const cfg = readAlertConfig();
+            const tEl = document.getElementById('alert-threshold-input');
+            const cEl = document.getElementById('alert-condition-select');
+            if (tEl) tEl.value = cfg.threshold;
+            if (cEl) cEl.value = cfg.condition;
+            renderAlertPreview(cfg);
+            const msg = document.getElementById('alert-settings-msg');
+            if (msg) msg.innerHTML = '';
+        }
+
+        function saveAlertSettings() {
+            const tEl = document.getElementById('alert-threshold-input');
+            const cEl = document.getElementById('alert-condition-select');
+            const msg = document.getElementById('alert-settings-msg');
+            const t = parseFloat(tEl.value);
+            const c = (cEl.value === 'above') ? 'above' : 'below';
+            if (isNaN(t)) {
+                if (msg) msg.innerHTML = '<div class="error-msg">閾値は数値で入力してください</div>';
+                return;
+            }
+            const cfg = { threshold: t, condition: c };
+            try {
+                localStorage.setItem('tempAlertConfig', JSON.stringify(cfg));
+                renderAlertPreview(cfg);
+                if (msg) msg.innerHTML = '<div class="success-msg">保存しました。ダッシュボードを開くと新しい条件で判定されます。</div>';
+            } catch (e) {
+                if (msg) msg.innerHTML = '<div class="error-msg">保存に失敗: ' + escapeHtmlNick(e.message) + '</div>';
+            }
+        }
+
+        function resetAlertSettings() {
+            try { localStorage.removeItem('tempAlertConfig'); } catch (e) {}
+            loadAlertSettings();
+            const msg = document.getElementById('alert-settings-msg');
+            if (msg) msg.innerHTML = '<div class="success-msg">初期値 (5℃ 以下) に戻しました。</div>';
+        }
+
+        // ==================== 表示名管理 (2026-07-17 追加) ====================
+        function escapeHtmlNick(text) {
+            if (text == null) return '';
+            const div = document.createElement('div');
+            div.textContent = String(text);
+            return div.innerHTML;
+        }
+
+        async function loadNicknames() {
+            const el = document.getElementById('nicknames-content');
+            el.innerHTML = '読み込み中...';
+            try {
+                // 現在の nickname マッピングと、DB に存在する全 device_id を突き合わせる
+                //   2026-08-15 更新: 温度データが無い device_id (ESP-NOW Master 等) も表示
+                //   union(温度センサー, nickname 登録) を並べる
+                const [nickRes, sensorRes] = await Promise.all([
+                    fetch('/api/nicknames'),
+                    fetch('/api/sensors')
+                ]);
+                const nickData = await nickRes.json();
+                const sensorData = await sensorRes.json();
+
+                const nicknames = {};
+                for (const n of (nickData.nicknames || [])) {
+                    nicknames[n.sensor_id] = n.nickname;
+                }
+                const sensors = sensorData.sensors || [];
+
+                // sensor_id を union (温度あり + nickname のみ) で集める
+                const idSet = new Set();
+                const infoBySid = {};
+                for (const s of sensors) {
+                    idSet.add(s.sensor_id);
+                    infoBySid[s.sensor_id] = { hasTemp: true };
+                }
+                for (const sid of Object.keys(nicknames)) {
+                    if (!idSet.has(sid)) {
+                        idSet.add(sid);
+                        infoBySid[sid] = { hasTemp: false };
+                    }
+                }
+                // 種類推定: MST- は Master、ESP-/NOW- はセンサー、それ以外は Unknown
+                function kindOf(sid) {
+                    if (sid.startsWith('MST-')) return { icon: '📡', label: 'Master' };
+                    if (sid.startsWith('ESP-')) return { icon: '🌡️', label: 'WiFi センサー' };
+                    if (sid.startsWith('NOW-')) return { icon: '📶', label: 'ESP-NOW センサー' };
+                    return { icon: '❓', label: 'Unknown' };
+                }
+
+                // 表示順: Master → WiFi センサー → ESP-NOW センサー → その他
+                const orderKey = (sid) => {
+                    if (sid.startsWith('MST-')) return '1' + sid;
+                    if (sid.startsWith('ESP-')) return '2' + sid;
+                    if (sid.startsWith('NOW-')) return '3' + sid;
+                    return '9' + sid;
+                };
+                const idList = Array.from(idSet).sort((a, b) => orderKey(a).localeCompare(orderKey(b)));
+
+                // テーブル生成
+                let html = '<table style="width:100%;border-collapse:collapse;margin-top:10px;">';
+                html += '<thead><tr style="background:#f4f4f4;">';
+                html += '<th style="text-align:left;padding:8px;border:1px solid #ddd;">種類</th>';
+                html += '<th style="text-align:left;padding:8px;border:1px solid #ddd;">device_id</th>';
+                html += '<th style="text-align:left;padding:8px;border:1px solid #ddd;">現在の表示名</th>';
+                html += '<th style="text-align:left;padding:8px;border:1px solid #ddd;">新しい表示名</th>';
+                html += '<th style="text-align:left;padding:8px;border:1px solid #ddd;">操作</th>';
+                html += '</tr></thead><tbody>';
+
+                if (idList.length === 0) {
+                    html += '<tr><td colspan="5" style="padding:8px;">まだデバイスが登録されていません</td></tr>';
+                }
+
+                for (const sid of idList) {
+                    const currentNick = nicknames[sid] || '';
+                    const safeSid = escapeHtmlNick(sid);
+                    const safeNick = escapeHtmlNick(currentNick);
+                    const kind = kindOf(sid);
+                    const hasTemp = infoBySid[sid].hasTemp;
+                    html += '<tr>';
+                    html += '<td style="padding:8px;border:1px solid #ddd;white-space:nowrap;">' + kind.icon + ' ' + kind.label + '</td>';
+                    html += '<td style="padding:8px;border:1px solid #ddd;font-family:monospace;font-size:0.85em;">' + safeSid;
+                    if (!hasTemp) {
+                        html += ' <span style="color:#888;font-size:0.85em;">(温度データなし)</span>';
+                    }
+                    html += '</td>';
+                    html += '<td style="padding:8px;border:1px solid #ddd;">' + (safeNick || '<span style="color:#999;">(未設定)</span>') + '</td>';
+                    html += '<td style="padding:8px;border:1px solid #ddd;">';
+                    html += '<input type="text" id="nick-input-' + safeSid + '" value="' + safeNick + '" ';
+                    html += 'placeholder="例: 冷却塔1、外気温..." maxlength="50" ';
+                    html += 'style="width:100%;padding:4px;box-sizing:border-box;">';
+                    html += '</td>';
+                    html += '<td style="padding:8px;border:1px solid #ddd;white-space:nowrap;">';
+                    html += '<button class="btn-primary" onclick="saveNickname(\'' + encodeURIComponent(sid) + '\')">💾 保存</button> ';
+                    if (currentNick) {
+                        html += '<button class="btn-danger" onclick="deleteNickname(\'' + encodeURIComponent(sid) + '\')">🗑️ 削除</button>';
+                    }
+                    html += '</td>';
+                    html += '</tr>';
+                }
+
+                html += '</tbody></table>';
+                el.innerHTML = html;
+            } catch (e) {
+                el.innerHTML = '<div style="color:#c00;">読み込みエラー: ' + escapeHtmlNick(e.message) + '</div>';
+            }
+        }
+
+        async function saveNickname(encodedSid) {
+            const sid = decodeURIComponent(encodedSid);
+            const input = document.getElementById('nick-input-' + sid);
+            if (!input) {
+                alert('入力欄が見つかりません: ' + sid);
+                return;
+            }
+            const nickname = input.value.trim();
+            if (!nickname) {
+                alert('表示名を入力してください');
+                return;
+            }
+            try {
+                const res = await fetch('/api/nicknames/' + encodedSid, {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({nickname: nickname})
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    await loadNicknames();
+                    alert('✓ 表示名を保存しました: ' + nickname);
+                } else {
+                    alert('✗ 保存失敗: ' + (data.message || 'unknown error'));
+                }
+            } catch (e) {
+                alert('通信エラー: ' + e.message);
+            }
+        }
+
+        async function deleteNickname(encodedSid) {
+            const sid = decodeURIComponent(encodedSid);
+            if (!confirm('表示名を削除しますか？\ndevice_id: ' + sid)) return;
+            try {
+                const res = await fetch('/api/nicknames/' + encodedSid, {
+                    method: 'DELETE'
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    await loadNicknames();
+                } else {
+                    alert('✗ 削除失敗: ' + (data.message || 'unknown error'));
+                }
+            } catch (e) {
+                alert('通信エラー: ' + e.message);
+            }
+        }
+        // ==================== 表示名管理 END ====================
+
+        async function loadStatus() {
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+                const html = `
+                    <div class="status-box">
+                        <strong>接続センサー:</strong> <span class="status-value">${data.connected_sensors}</span> 台
+                    </div>
+                    <div class="status-box">
+                        <strong>メモリ:</strong> <span class="status-value">${data.memory_percent}%</span>
+                    </div>
+                    <div class="status-box">
+                        <strong>ディスク:</strong> <span class="status-value">${data.disk_percent}%</span>
+                    </div>
+                    <div class="status-box ${data.uptime_seconds > 3600 ? '' : 'warn'}">
+                        <strong>稼働時間:</strong> <span class="status-value">${(data.uptime_seconds / 3600).toFixed(1)}時間</span>
+                    </div>
+                `;
+                document.getElementById('status-content').innerHTML = html;
+            } catch (e) {
+                document.getElementById('status-content').innerHTML = '<div class="error-msg">ステータス取得失敗: ' + e.message + '</div>';
+            }
+        }
+
+        // HTMLエスケープ関数
+        function escapeHtml(text) {
+            if (text == null || text === undefined) {
+                return '';
+            }
+            const div = document.createElement('div');
+            div.textContent = String(text);
+            return div.innerHTML;
+        }
+        
+        async function refreshSensors() {
+            try {
+                const res = await fetch('/api/sensors');
+                const data = await res.json();
+                const container = document.getElementById('sensors-content');
+                
+                if (!data.sensors || data.sensors.length === 0) {
+                    container.innerHTML = '<div class="error-msg">センサーが接続されていません</div>';
+                    return;
+                }
+                
+                let html = '';
+                data.sensors.forEach(sensor => {
+                    const sensorId = escapeHtml(sensor.sensor_id);
+                    const sensorName = escapeHtml(sensor.sensor_name || sensor.sensor_id);
+                    const temp = sensor.temperature ? sensor.temperature.toFixed(1) : '-';
+                    const timestamp = sensor.timestamp ? new Date(sensor.timestamp).toLocaleString('ja-JP') : '-';
+                    
+                    html += `
+                        <div class="sensor-card" data-sensor-id="${sensorId}">
+                            <strong>${sensorName}</strong>
+                            <input type="text" placeholder="センサー名" value="${escapeHtml(sensor.sensor_name || '')}" onchange="updateSensorName('${sensorId}', this.value)">
+                            <div><small>ID: ${sensorId} | 温度: ${temp}°C | 更新: ${timestamp}</small></div>
+                            <button class="btn-danger btn-small delete-sensor-btn" data-sensor-id="${sensorId}">削除</button>
+                        </div>
+                    `;
+                });
+                
+                container.innerHTML = html;
+                
+                // 削除ボタンのイベントリスナーを追加
+                container.querySelectorAll('.delete-sensor-btn').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        const sensorId = this.getAttribute('data-sensor-id');
+                        if (sensorId) {
+                            deleteSensor(sensorId);
+                        }
+                    });
+                });
+            } catch (e) {
+                document.getElementById('sensors-content').innerHTML = '<div class="error-msg">エラー: ' + escapeHtml(e.message) + '</div>';
+            }
+        }
+
+        // 2026-08-16 修正:
+        //   /api/logs は各行を {"source": "xxx.log", "line": "2026-08-16 ... INFO - msg"}
+        //   の形式で返す (生の logfile 行そのまま)。旧実装は log.level/log.timestamp/log.message
+        //   を参照して undefined を出していた。
+        //   生の行をそのまま表示し、ERROR / WARN の含有だけ色付けする。
+        async function loadLogs() {
+            try {
+                const res = await fetch('/api/logs?limit=100');
+                const data = await res.json();
+                const el = document.getElementById('log-content');
+                if (!data.logs || data.logs.length === 0) {
+                    el.textContent = 'ログなし';
+                    return;
+                }
+                let html = '';
+                for (const entry of data.logs) {
+                    const src  = entry.source || '';
+                    const line = entry.line   || '';
+                    let className = 'log-info';
+                    if (/\bERROR\b|\bCRITICAL\b/.test(line))       className = 'log-error';
+                    else if (/\bWARN(ING)?\b/.test(line))          className = 'log-warn';
+                    // ソース (ファイル名) を左端に短く表示
+                    const srcShort = src.replace(/\.log$/, '');
+                    html += `<div class="${className}">`
+                          +   `<span style="color:#888;">[${escapeHtml(srcShort)}]</span> `
+                          +   escapeHtml(line)
+                          + `</div>`;
+                }
+                el.innerHTML = html;
+                // 最新行が末尾に来るので、スクロールを最下部へ
+                el.scrollTop = el.scrollHeight;
+            } catch (e) {
+                document.getElementById('log-content').innerHTML =
+                    `<div class="log-error">ログ読み込み失敗: ${escapeHtml(e.message)}</div>`;
+            }
+        }
+
+        async function deleteOldData() {
+            const days = document.getElementById('days-old').value;
+            if (!confirm(`${days}日以前のデータを削除しますか？`)) return;
+            try {
+                const res = await fetch('/api/delete-old-data', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ days_old: parseInt(days) })
+                });
+                const data = await res.json();
+                
+                // レスポンスのチェック
+                if (res.ok && data.status === 'success') {
+                    const deletedCount = data.deleted_count || 0;
+                    const msg = `<div class="success-msg">✓ ${deletedCount}件を削除しました</div>`;
+                    document.getElementById('data-message').innerHTML = msg;
+                } else {
+                    const errorMsg = data.message || '削除に失敗しました';
+                    const msg = `<div class="error-msg">✗ エラー: ${errorMsg}</div>`;
+                    document.getElementById('data-message').innerHTML = msg;
+                }
+            } catch (e) {
+                const msg = `<div class="error-msg">✗ エラー: ${e.message}</div>`;
+                document.getElementById('data-message').innerHTML = msg;
+            }
+        }
+
+        function showAddSensorModal() {
+            document.getElementById('add-sensor-modal').classList.add('show');
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove('show');
+        }
+
+        // 2026-08-16: 簡易パフォーマンス表示
+        // /api/status から CPU / メモリ / ディスクの現在値を取得しつつ、
+        // 呼び出しラウンドトリップからネットワーク遅延も同時に測る
+        async function measurePerformance() {
+            const start = performance.now();
+            try {
+                const res = await fetch('/api/status');
+                const ping = ((performance.now() - start) / 2).toFixed(0);
+                const data = await res.json();
+
+                function setVal(id, txt) {
+                    const el = document.getElementById(id);
+                    if (el) el.textContent = txt;
+                }
+                function setBar(id, pct, warnThreshold) {
+                    const el = document.getElementById(id);
+                    if (!el) return;
+                    const p = Math.max(0, Math.min(100, Number(pct) || 0));
+                    el.style.width = p + '%';
+                    // 使用率が高いと色を変える (緑 → 黄 → 赤)
+                    if (p >= 90) el.style.background = '#f44336';
+                    else if (p >= warnThreshold) el.style.background = '#ff9800';
+                    else el.style.background = el.dataset.baseColor || el.style.background;
+                }
+                // 初期色を data 属性で覚えておく (色戻し用)
+                for (const id of ['perf-cpu-bar','perf-mem-bar','perf-disk-bar']) {
+                    const el = document.getElementById(id);
+                    if (el && !el.dataset.baseColor) el.dataset.baseColor = el.style.background;
+                }
+
+                const cpu  = data.cpu_percent  != null ? data.cpu_percent  : '-';
+                const mem  = data.memory_percent != null ? data.memory_percent : '-';
+                const disk = data.disk_percent != null ? data.disk_percent : '-';
+
+                setVal('perf-cpu',  cpu + ' %');
+                setVal('perf-mem',  mem + ' %');
+                setVal('perf-disk', disk + ' %');
+                setBar('perf-cpu-bar',  cpu,  70);
+                setBar('perf-mem-bar',  mem,  75);
+                setBar('perf-disk-bar', disk, 80);
+
+                if (data.memory_used_mb != null && data.memory_total_mb != null) {
+                    setVal('perf-mem-detail',
+                           `(${data.memory_used_mb} / ${data.memory_total_mb} MB)`);
+                }
+                setVal('network-ping', ping + ' ms');
+            } catch (e) {
+                setVal('network-ping', 'エラー: ' + e.message);
+            }
+        }
+        // パフォーマンスタブを開いたときに自動測定
+        // (switchTab から呼ばれる loadStatus とは別。performance タブ選択時は
+        //  何も呼ばれない設計だったので、DOMContentLoaded で 1 回叩いておく)
+        window.addEventListener('DOMContentLoaded', () => {
+            // タブが表示されたらでも良いが、初回だけで十分な用途なのでここで叩く
+            // (実測は「更新」ボタンでいつでも取れる)
+        });
+
+        async function deleteSensor(id) {
+            if (!id) {
+                console.error('deleteSensor: sensor_id is empty');
+                alert('✗ エラー: センサーIDが指定されていません');
+                return;
+            }
+            
+            console.log('deleteSensor called with id:', id);
+
+            // [2026-07-17 audit] /api/test-delete プリチェック削除。
+            // DELETE エンドポイント直接呼び出しでよい。エラー時は catch で拾う。
+
+            if (!confirm(`センサー ${id} の全データを削除しますか？\nこの操作は取り消せません。`)) {
+                return;
+            }
+            
+            try {
+                const url = `/api/sensors/${encodeURIComponent(id)}`;
+                console.log('DELETE request to:', url);
+                console.log('Full URL:', window.location.origin + url);
+                
+                const res = await fetch(url, {
+                    method: 'DELETE',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                console.log('Response status:', res.status);
+                console.log('Response statusText:', res.statusText);
+                console.log('Response Content-Type:', res.headers.get('Content-Type'));
+                console.log('Response URL:', res.url);
+                
+                // レスポンステキストを先に取得
+                const responseText = await res.text();
+                console.log('Response text length:', responseText.length);
+                console.log('Response text (first 500 chars):', responseText.substring(0, 500));
+                
+                // HTMLが返ってきている場合の処理
+                if (responseText.trim().startsWith('<!') || responseText.includes('<!doctype')) {
+                    console.error('HTML response received instead of JSON');
+                    console.error('Full HTML response:', responseText);
+                    alert(`✗ エラー: APIエンドポイントが見つかりません\n\nサーバーがHTMLページを返しています。\n\n確認事項:\n1. サーバーが再起動されているか\n2. APIエンドポイントが正しく登録されているか\n\n詳細はブラウザのコンソールを確認してください。`);
+                    return;
+                }
+                
+                // Content-Typeを確認
+                const contentType = res.headers.get('Content-Type') || '';
+                if (!contentType.includes('application/json')) {
+                    console.error('Non-JSON response. Content-Type:', contentType);
+                    console.error('Full response:', responseText);
+                    alert(`✗ エラー: サーバーからJSON以外のレスポンスが返されました\nステータス: ${res.status}\nContent-Type: ${contentType}\nURL: ${res.url}\n\n詳細はブラウザのコンソールを確認してください。`);
+                    return;
+                }
+                
+                // JSONパースを試行
+                let data;
+                try {
+                    data = JSON.parse(responseText);
+                } catch (parseError) {
+                    console.error('JSON parse error:', parseError);
+                    console.error('Response text:', responseText);
+                    alert(`✗ エラー: JSONの解析に失敗しました\nステータス: ${res.status}\n\n詳細はブラウザのコンソールを確認してください。`);
+                    return;
+                }
+                
+                console.log('Response data:', data);
+                
+                if (res.ok && data.status === 'success') {
+                    alert(`✓ ${data.deleted_count}件のデータを削除しました`);
+                    refreshSensors();
+                } else {
+                    alert(`✗ エラー: ${data.message || '削除に失敗しました'}`);
+                }
+            } catch (e) {
+                console.error('deleteSensor error:', e);
+                console.error('Error stack:', e.stack);
+                alert(`✗ エラー: ${e.message}\n\n詳細はブラウザのコンソールを確認してください。`);
+            }
+        }
+        
+        function exportCSV() {
+            const hours = prompt('エクスポートする期間を指定してください（時間）\n例: 720 (1ヶ月)', '720');
+            if (!hours || isNaN(hours)) {
+                return;
+            }
+            
+            const sensorId = prompt('特定のセンサーのみエクスポートする場合はセンサーIDを入力してください\n（空欄で全センサー）', '');
+            
+            let url = `/api/export/csv?hours=${hours}`;
+            if (sensorId) {
+                url += `&sensor_id=${encodeURIComponent(sensorId)}`;
+            }
+            
+            // ダウンロードリンクを作成してクリック
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = '';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+        
+        function exportLogs() {
+            const limit = prompt('エクスポートするログ件数を指定してください', '1000');
+            if (!limit || isNaN(limit)) {
+                return;
+            }
+            
+            const level = prompt('フィルタリングするログレベルを指定してください\n（ERROR, WARN, INFO または空欄で全て）', '');
+            
+            let url = `/api/export/logs?limit=${limit}`;
+            if (level) {
+                url += `&level=${encodeURIComponent(level)}`;
+            }
+            
+            // ダウンロードリンクを作成してクリック
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = '';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+        
+        async function backupDatabase() {
+            if (!confirm('データベースのバックアップを作成しますか？')) {
+                return;
+            }
+            
+            try {
+                const res = await fetch('/api/backup');
+                
+                if (res.ok) {
+                    // レスポンスからファイル名を取得
+                    const contentDisposition = res.headers.get('Content-Disposition');
+                    let filename = 'temperature_backup.db';
+                    if (contentDisposition) {
+                        const match = contentDisposition.match(/filename="(.+)"/);
+                        if (match) {
+                            filename = match[1];
+                        }
+                    }
+                    
+                    // Blobとしてダウンロード
+                    const blob = await res.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = filename;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    window.URL.revokeObjectURL(url);
+                    
+                    alert('✓ バックアップを作成しました');
+                } else {
+                    const data = await res.json();
+                    alert(`✗ エラー: ${data.message || 'バックアップ作成に失敗しました'}`);
+                }
+            } catch (e) {
+                alert(`✗ エラー: ${e.message}`);
+            }
+        }
+        
+        function updateSensorName(id, name) { console.log('Update:', id, name); }
+        function addSensor() { alert('センサー追加機能は準備中です'); closeModal('add-sensor-modal'); }
+        function filterLogs(level) {
+            // ログを再読み込みしてフィルタリング
+            loadLogs().then(() => {
+                const logs = document.querySelectorAll('#log-content > div');
+                logs.forEach(log => {
+                    if (!level) {
+                        log.style.display = '';
+                    } else {
+                        const levelClass = level === 'error' ? 'log-error' : 
+                                         level === 'warn' ? 'log-warn' : 'log-info';
+                        log.style.display = log.classList.contains(levelClass) ? '' : 'none';
+                    }
+                });
+            });
+        }
+
+        // 初期ロード
+        window.onload = () => loadStatus();
+    </script>
+</body>
+</html>
