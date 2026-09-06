@@ -33,6 +33,8 @@ typedef struct {
     float humidity;
     int8_t rssi;
     uint32_t timestamp;
+    float battery_voltage;    // 常時給電機なので 0.0 固定 (Master と型を揃えるため)
+    bool  battery_mode;       // 同上、false 固定
 } SensorData;
 
 // MAC 由来 sensor_id (setup で生成、loop から参照)
@@ -134,6 +136,8 @@ void send_sensor_data() {
     sensor_data.humidity = 0.0;
     sensor_data.rssi = WiFi.RSSI();
     sensor_data.timestamp = millis();
+    sensor_data.battery_voltage = 0.0;   // 常時給電なので測らない
+    sensor_data.battery_mode = false;    // 同上 (Master と構造体を揃えるための枠)
 
     esp_now_send(masterMAC, (uint8_t *)&sensor_data, sizeof(sensor_data));
 

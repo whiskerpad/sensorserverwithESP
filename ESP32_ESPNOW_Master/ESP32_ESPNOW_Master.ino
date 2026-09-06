@@ -18,6 +18,13 @@
  *      - 起動時 master_hello、60 秒ごと master_status を Serial に送出
  *        → Pi 側 serial_reader が受け取り device_nicknames に自己登録、
  *           ダッシュボード管理画面に自動で現れる。全 Master 共通スケッチ化。
+ *    2026-09-05  SensorData に battery_voltage / battery_mode を追加 (見落としの修正):
+ *      - 子機 (ESP32C3_ESPNOW_Battery_Sensor) の構造体には元から有ったが
+ *        Master 側に無く、memcpy で切り詰められて電池電圧が捨てられていた
+ *      - ESP32_ESPNOW_Sensor (常時給電) も同じ構造体に揃えた (0.0 / false 固定)
+ *      - 受信時に len != sizeof(SensorData) を弾くチェックを追加
+ *      - Pi へ転送する JSON に voltage / battery_mode を追加
+ *      ★3 スケッチの SensorData は常に同一に保つこと
  * ============================================================
  */
 
@@ -36,6 +43,8 @@ typedef struct {
     float humidity;          // 湿度 (%)
     int8_t rssi;             // 信号強度 (dBm)
     uint32_t timestamp;      // タイムスタンプ
+    float battery_voltage;   // 電池電圧 (V)。常時給電機は 0.0
+    bool  battery_mode;      // 電池低下なら true。常時給電機は false
 } SensorData;
 
 // グローバル
@@ -60,6 +69,14 @@ void on_data_recv(const esp_now_recv_info *recv_info, const uint8_t *incomingDat
 void on_data_recv(const uint8_t *src_mac, const uint8_t *incomingData, int len) {
     int8_t packet_rssi = 0;
 #endif
+    // 構造体が子機と一致しているか確認する。
+    // 一致しないまま memcpy すると境界外を読むので、ここで弾く。
+    if (len != (int)sizeof(SensorData)) {
+        Serial.printf("[ESP-NOW] !! struct size mismatch: received=%d expected=%u  "
+                      "(子機と Master の SensorData を揃えてください)\n",
+                      len, (unsigned)sizeof(SensorData));
+        return;
+    }
     if (data_count < 10) {
         memcpy(&received_data[data_count], incomingData, sizeof(SensorData));
         if (packet_rssi != 0) {
@@ -84,7 +101,8 @@ void send_master_hello() {
     doc["type"] = "master_hello";
     doc["device_id"] = master_id;
     doc["mac"] = master_mac;
-    doc["firmware"] = "ESP32_ESPNOW_Master 2026-08-15";
+    doc["firmware"] = "ESP32_ESPNOW_Master 2026-09-05";
+    doc["struct_size"] = (int)sizeof(SensorData);
     serializeJson(doc, Serial);
     Serial.println();
 }
@@ -171,6 +189,8 @@ void send_to_raspberry() {
         sensor["temperature"] = received_data[i].temp;
         sensor["humidity"] = received_data[i].humidity;
         sensor["rssi"] = received_data[i].rssi;
+        sensor["voltage"] = received_data[i].battery_voltage;
+        sensor["battery_mode"] = received_data[i].battery_mode ? 1 : 0;
     }
 
     serializeJson(doc, Serial);
