@@ -6,7 +6,7 @@ Arduino スケッチを書き込むための設定手順を網羅した文書。
 
 ## 対象読者・想定環境
 
-- ESP-WROOM-02 (技適認証あり、Espressif R 201-160606) を単体で使う
+- ESP-WROOM-02 (技適認証あり、工事設計認証番号 206-000519) を単体で使う
 - 書き込みは **FTDI USB シリアル変換 (3.3V ロジック)** で実施
 - Arduino IDE 1.8.x または 2.x (2.x 推奨)
 - Windows 10/11 (macOS/Linux でもほぼ同じ)
@@ -185,14 +185,41 @@ Hard resetting via RTS pin...
 | `esptool.py error: Invalid head of packet (0x1C)` | Reset Method が `dtr (aka nodemcu)` になっている | `no dtr (aka ck)` に変更 |
 | `Failed to connect to ESP8266: Timed out waiting for packet header` | GPIO0 が GND に落ちていない (フラッシュモード未進入) | §4 の手順を Step 2-3 からやり直す |
 | `head packet error` | Flash Mode が個体と不整合 (DOUT/DIO) | `DOUT (compatible)` に変更 |
-| `Chip erase completed` は成功するが起動しない | Flash Size が実チップと不一致 | `4MB (FS:2MB OTA:~1019KB)` に変更 |
+| `Chip erase completed` は成功するが起動しない | Flash Size が実チップと不一致 | **§5.1 のスケッチで実チップ容量を実測**してから、その値に合わせる (筆者の個体は 4MB → `4MB (FS:2MB OTA:~1019KB)`) |
 | 書き込み後 Serial モニタで文字化けが続く | Boot 時のログ出力速度 (74880 bps) と Serial モニタの速度 (通常 115200) 不一致 | 文字化けは Boot 冒頭数行だけなので実害無し。詳細ログを見たいなら Serial モニタを 74880bps に切替え |
 | `'D4' was not declared in this scope` (コンパイル時) | `Generic ESP8266 Module` ではピン別名記号 `D4` 等は未定義 | GPIO 番号を直接書く (例: `4`) |
 | 書き込み中に電源が落ちる | FTDI の 3.3V 出力が電流不足 (最大 50mA 程度) | 別電源 (電池 + HT7333-1) から給電し、FTDI からは信号線のみ接続 |
 | USB を認識しない | FTDI ドライバ未インストール | §1.3 参照 |
 | 書き込み速度が遅い or 失敗頻発 | Upload Speed 460800 で信号品質不足 | 115200 に落として再試行 |
 
-### 5.1 起動時の Serial ログ (74880bps) を確認したい場合
+### 5.1 実チップの Flash 容量を実測する
+
+Flash Size は「たぶん 4MB だろう」で設定すると事故ります。同じ ESP-WROOM-02 でも
+ロットによって 2MB 品が混ざります。**書き込みは通るのに起動しない**という
+分かりにくい症状になるので、最初に一度だけ実測しておくのが確実です。
+
+```cpp
+void setup() {
+  Serial.begin(115200);
+  delay(500);
+  Serial.println();
+  Serial.printf("実チップ容量: %u bytes (%u MB)\n",
+                ESP.getFlashChipRealSize(),
+                ESP.getFlashChipRealSize() / 1048576);
+  Serial.printf("IDE 設定値  : %u bytes (%u MB)\n",
+                ESP.getFlashChipSize(),
+                ESP.getFlashChipSize() / 1048576);
+}
+void loop() {}
+```
+
+**両方の値が一致していれば OK**。IDE 設定値のほうが大きいと起動しません。
+逆に IDE 設定値のほうが小さい分には起動しますが、その差分の領域は使えません
+(SPIFFS/LittleFS と OTA の取り分が減るだけで、動作自体は安定します)。
+
+---
+
+### 5.2 起動時の Serial ログ (74880bps) を確認したい場合
 
 ESP8266 は Boot 時に 74880bps で内部ログを出す (通常 115200 でモニタしていると
 文字化けする冒頭数行の正体)。詳細を確認したい場合は Arduino IDE の Serial モニタ
@@ -238,7 +265,7 @@ sudo journalctl -u temperature-server -f
 
 ## 7. ESP-WROOM-02 の技適 (電波法) について
 
-- **技適認証: R 201-160606**
+- **技適認証: 工事設計認証番号 206-000519** (モジュールの金属シールドに刻印)
 - Espressif 純正モジュールの ESP-WROOM-02 は技適取得済で、日本国内で
   合法的に電波を出せる
 - **秋月電子通商 AE-ESP-WROOM-02 DIP 化キット** は元モジュールに DIP 化基板を
