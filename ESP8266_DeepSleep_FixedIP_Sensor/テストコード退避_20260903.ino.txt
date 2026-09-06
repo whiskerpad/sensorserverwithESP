@@ -1,0 +1,81 @@
+#include <ESP8266WiFi.h>
+#include <ESP8266HTTPClient.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
+#include <ArduinoJson.h>
+
+#define ONE_WIRE_BUS 4
+const char* apSSID = "YOUR_AP_SSID_HERE";  // ★書換え
+const char* apPassword = "YOUR_AP_PASSWORD_HERE";         // ★書換え
+const char* serverURL = "http://192.168.4.1:5000/api/temperature";
+
+OneWire oneWire(ONE_WIRE_BUS);
+DallasTemperature sensors(&oneWire);
+WiFiClient wifiClient;
+DeviceAddress addr;
+bool hasAddr = false;
+
+void setup() {
+  Serial.begin(115200);
+  delay(500);
+  Serial.println();
+  Serial.println("=== 2段階テスト: 前半10回=POSTなし / 後半10回=POSTあり ===");
+
+  sensors.begin();
+  hasAddr = sensors.getAddress(addr, 0);
+  Serial.printf("検出数=%d  給電方式=%s\n",
+                sensors.getDeviceCount(),
+                sensors.isParasitePowerMode() ? "パラサイト" : "外部給電");
+
+  const char* wifiStatusText(int s) {
+    switch (s) {
+      case WL_IDLE_STATUS: return "待機中";
+      case WL_NO_SSID_AVAIL: return "その SSID の電波が見つからない";
+      case WL_CONNECTED: return "接続成功";
+      case WL_CONNECT_FAILED: return "接続失敗(パスワード誤りの可能性)";
+      case WL_WRONG_PASSWORD: return "パスワードが違う";
+      case WL_DISCONNECTED: return "切断状態";
+      default: return "不明";
+    }
+  }
+}
+
+void loop() {
+  static int n = 0;
+  n++;
+  bool doPost = (n > 10);  // ← 11 回目から POST を始める
+
+  sensors.requestTemperatures();
+  float t = sensors.getTempCByIndex(0);
+
+  uint8_t sp[9] = { 0 };
+  bool crcOk = false;
+  if (hasAddr && oneWire.reset()) {
+    oneWire.select(addr);
+    oneWire.write(0xBE);
+    for (int i = 0; i < 9; i++) sp[i] = oneWire.read();
+    crcOk = (OneWire::crc8(sp, 8) == sp[8]);
+  }
+
+  Serial.printf("[%2d] POST=%s temp=%7.2f crc=%s parasite=%d heap=%5u rssi=%d\n",
+                n, doPost ? "有" : "無", t, crcOk ? "OK" : "NG",
+                sensors.isParasitePowerMode(), ESP.getFreeHeap(), WiFi.RSSI());
+
+  if (doPost && WiFi.status() == WL_CONNECTED) {
+    StaticJsonDocument<256> doc;
+    doc["device_id"] = "ESP-TEST01";
+    doc["temperature"] = (t == DEVICE_DISCONNECTED_C) ? -999 : t;
+    String payload;
+    serializeJson(doc, payload);
+
+    HTTPClient http;
+    http.setTimeout(5000);
+    http.begin(wifiClient, serverURL);
+    http.addHeader("Content-Type", "application/json");
+    int code = http.POST(payload);
+    http.end();
+    Serial.printf("     └ POST HTTP %d\n", code);
+  }
+
+  delay(3000);
+}
