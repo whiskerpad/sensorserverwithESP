@@ -6,20 +6,22 @@
  *
  *  設計方針: 3 層分離アーキテクチャ (2026-07-30 導入)
  *    - 識別    = MAC 由来の device_id を自動生成 (per-chip 書換え不要)
- *    - IP割当  = Pi 側 dnsmasq の DHCP 予約 (WiFi.config 静的宣言は使わない)
+ *    - IP割当  = 方式D: MAC 末尾バイトから算出した静的 IP を WiFi.config で自己宣言
+ *                192.168.4.(100 + (mac[5] & 0x7F))  → .100〜.227
+ *                Pi 側 dnsmasq に予約は書かない (DHCP プールは .228-.254 の一時接続用)
  *    - 表示名  = Flask の nickname テーブルで管理
  *    詳細は outputs/docs/デバイス識別設計.md 参照
  *
  *  【重要】このスケッチは全チップ共通、書換え不要でコピペ書込み可能
  *    device_id は起動時に MAC から自動生成される (例: ESP-A1B2C3)
- *    IP は Pi 側 dnsmasq の予約設定で決まる
+ *    IP も MAC から自動算出される (Pi 側の設定作業は不要)
  *    人間向けの名前は Pi ダッシュボードの管理画面で nickname 設定
  *
  *  新チップ追加手順:
- *    1) Get_MAC_Address.ino で新チップの MAC を確認
- *    2) Pi 側 /etc/dnsmasq.d/wlan1.conf に dhcp-host= の 1 行追加
- *    3) このスケッチをコピペで書込む
- *    4) ダッシュボード管理画面で nickname 割当
+ *    1) このスケッチをコピペで書込む (Pi 側の作業なし)
+ *    2) ダッシュボード管理画面で nickname 割当
+ *    ※ IP は MAC 末尾 7bit 由来なので、稀に既存機と衝突しうる。
+ *       導入時に Flask の device 一覧で ip_address の重複がないか確認すること
  *
  *  必須配線:
  *    - GPIO16 (XPD_DCDC) ─ RST : DeepSleep wake 用 (必須)
@@ -41,7 +43,17 @@
  *    2026-07     初版 (静的 IP + フラット JSON 送信)
  *    2026-07-18  Serial.begin() 追加、JSON バッファ 256 → 384
  *    2026-07-30  3 層分離アーキテクチャに切替 (MAC ベース device_id、DHCP 予約)
+ *    2026-08-21  ネットワーク層を方式D (MAC 由来の静的 IP) へ変更。
+ *                実測で電池寿命が 1 か月+ → 2 週間強に半減したため DHCP を廃止
  *                per-chip 書換えを廃止、全チップ共通スケッチに
+ *    2026-09-06  DS18B20 の読み取りに再試行を 1 回追加 (readTemperature()):
+ *      - -127 (CRC 失敗) / 85.0 (パワーオンリセット値) のとき、300ms 空けて
+ *        sensors.begin() でバスを取り直し、もう一度だけ読む
+ *      - 一過性の失敗で欠測になるのを減らすため。2 回目も駄目なら従来どおり
+ *        -999 に落として送信をスキップする
+ *      - 失敗時のみ起床時間が約 0.8 秒延びる。正常時の挙動は変更なし
+ *      - delay(800) は動作実績を尊重してそのまま残した (requestTemperatures()
+ *        は既定で変換完了までブロックするため理屈上は冗長)
  * ============================================================
  */
 
@@ -77,6 +89,29 @@ DallasTemperature sensors(&oneWire);
 WiFiClient wifiClient;
 
 
+// ============================================================
+//  DS18B20 を読む。一過性の失敗で欠測にしないため 1 回だけ再試行する。
+//    -127 : スクラッチパッドの CRC 失敗 (断線とは限らない)
+//    85.0 : パワーオンリセット値 (変換完了前に読んだ場合など)
+//  どちらも再試行で復帰することがあるので、バスを取り直して読み直す。
+//  本当に異常なら 2 回目も同じ値が返り、呼び出し側の判定でそのまま弾かれる。
+// ============================================================
+float readTemperature() {
+    sensors.requestTemperatures();
+    delay(800);                      // 12bit 変換待ち (従来どおり)
+    float t = sensors.getTempCByIndex(0);
+
+    if (t == DEVICE_DISCONNECTED_C || t == 85.0) {
+        delay(300);
+        sensors.begin();             // 1-Wire バスを取り直す
+        sensors.requestTemperatures();
+        delay(800);
+        t = sensors.getTempCByIndex(0);
+    }
+    return t;
+}
+
+
 void setup() {
     // ===== 0. Serial 初期化 (RF 校正時間確保と TX/RX ピン既知化) =====
     Serial.begin(115200);
@@ -97,12 +132,10 @@ void setup() {
     // ===== 3. 温度取得 =====
     sensors.begin();
     sensors.setResolution(12);
-    sensors.requestTemperatures();
-    delay(800);  // 12bit解像度: 750ms
 
-    float temp = sensors.getTempCByIndex(0);
+    float temp = readTemperature();   // 失敗時は内部で 1 回だけ再試行
 
-    // センサーエラーチェック
+    // センサーエラーチェック (再試行しても駄目なら欠測扱い)
     if (temp == DEVICE_DISCONNECTED_C || temp == -127.0 || temp == 85.0) {
         temp = -999.0;
     }
@@ -154,7 +187,7 @@ void setup() {
         doc["name"] = deviceId;                              // nickname 未設定時のフォールバック用
         doc["temperature"] = round(temp * 100) / 100.0;
         doc["temp"] = round(temp * 100) / 100.0;
-        doc["ip_address"] = WiFi.localIP().toString();       // dnsmasq が割当てた実 IP
+        doc["ip_address"] = WiFi.localIP().toString();       // 自己宣言した実 IP
         doc["voltage"] = round(voltage * 100) / 100.0;
         doc["battery_percent"] = (int)batteryPercent;
         doc["battery_mode"] = isBatteryMode ? 1 : 0;

@@ -7,7 +7,8 @@
  *  設計方針: 本番版 (ESP8266_DeepSleep_FixedIP_Sensor.ino) と同じく
  *  3 層分離アーキテクチャ (2026-07-30 導入):
  *    - 識別    = MAC 由来の device_id を自動生成 (per-chip 書換え不要)
- *    - IP割当  = Pi 側 dnsmasq の DHCP 予約
+ *    - IP割当  = 方式D: MAC 末尾バイトから算出した静的 IP を WiFi.config で自己宣言
+ *                192.168.4.(100 + (mac[5] & 0x7F))  → .100〜.227
  *    - 表示名  = Flask の nickname テーブル
  *
  *  位置付け: 【恒久保持の現地トラブルシューティング用バージョン】
@@ -34,7 +35,7 @@
  *
  *  現地でよくある切り分けフロー:
  *    赤フリッカ  → DS18B20 の VCC/GND/DATA、4.7kΩ プルアップを疑う
- *    黄点灯      → AP (Pi の hostapd) 稼働、DHCP 予約設定、電池電圧を疑う
+ *    黄点灯      → AP (Pi の hostapd) 稼働、IP 衝突 (MAC 末尾 7bit 一致)、電池電圧を疑う
  *    何も光らない→ HT7333-1 3.3V 出力、GPIO16-RST 配線、電池残量を疑う
  *    緑瞬き      → 正常
  *
@@ -43,6 +44,14 @@
  *  更新履歴:
  *    2026-07-18 LED 診断版 初版
  *    2026-07-30 3 層分離アーキテクチャに切替 (MAC ベース device_id)
+ *    2026-09-06  DS18B20 の読み取りに再試行を 1 回追加 (readTemperature()):
+ *      - -127 (CRC 失敗) / 85.0 (パワーオンリセット値) のとき、300ms 空けて
+ *        sensors.begin() でバスを取り直し、もう一度だけ読む
+ *      - 一過性の失敗で欠測になるのを減らすため。2 回目も駄目なら従来どおり
+ *        -999 に落として送信をスキップする
+ *      - 失敗時のみ起床時間が約 0.8 秒延びる。正常時の挙動は変更なし
+ *      - delay(800) は動作実績を尊重してそのまま残した (requestTemperatures()
+ *        は既定で変換完了までブロックするため理屈上は冗長)
  * ============================================================
  */
 
@@ -124,6 +133,29 @@ void goToDeepSleep() {
 }
 
 
+// ============================================================
+//  DS18B20 を読む。一過性の失敗で欠測にしないため 1 回だけ再試行する。
+//    -127 : スクラッチパッドの CRC 失敗 (断線とは限らない)
+//    85.0 : パワーオンリセット値 (変換完了前に読んだ場合など)
+//  どちらも再試行で復帰することがあるので、バスを取り直して読み直す。
+//  本当に異常なら 2 回目も同じ値が返り、呼び出し側の判定でそのまま弾かれる。
+// ============================================================
+float readTemperature() {
+    sensors.requestTemperatures();
+    delay(800);                      // 12bit 変換待ち (従来どおり)
+    float t = sensors.getTempCByIndex(0);
+
+    if (t == DEVICE_DISCONNECTED_C || t == 85.0) {
+        delay(300);
+        sensors.begin();             // 1-Wire バスを取り直す
+        sensors.requestTemperatures();
+        delay(800);
+        t = sensors.getTempCByIndex(0);
+    }
+    return t;
+}
+
+
 void setup() {
     // Serial 初期化 (TX/RX ピン既知化と RF 校正時間確保)
     Serial.begin(115200);
@@ -156,9 +188,7 @@ void setup() {
     }
 
     sensors.setResolution(12);
-    sensors.requestTemperatures();
-    delay(800);
-    float temp = sensors.getTempCByIndex(0);
+    float temp = readTemperature();   // 失敗時は内部で 1 回だけ再試行
 
     bool sensorValueError = false;
     if (temp == DEVICE_DISCONNECTED_C || temp == -127.0 || temp == 85.0) {
