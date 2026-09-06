@@ -240,49 +240,72 @@ sudo systemctl status hostapd --no-pager
 
 `Active: active (running)` が出れば OK。
 
-### 3.5 dnsmasq 設定 (DHCP プール + MAC 予約 = 本命)
+### 3.5 dnsmasq 設定 (DHCP プールは一時接続用のみ = 方式D)
 
-**重要**: 本プロジェクトは **3 層分離アーキテクチャ** (2026-07-30 導入) で運用します。
-IP 割当は Pi 側 dnsmasq の DHCP 予約で管理し、ESP スケッチは MAC から自動生成される
-device_id を使うため、per-chip の書換えは不要です。詳細は
+**重要**: 本プロジェクトは **3 層分離アーキテクチャ** で運用します。
+IP 割当は **ESP 側が自分の MAC から算出して静的宣言する方式 (方式D)** を採用し、
+Pi 側の dnsmasq には ESP 用の予約を一切書きません。詳細は
 `outputs/docs/デバイス識別設計.md` 参照。
 
-基本設定 (プール範囲と予約領域を分ける):
+アドレス設計:
+
+| 範囲 | 用途 | 誰が決めるか |
+|---|---|---|
+| `192.168.4.1` | Pi 自身 (wlan1、ゲートウェイ) | 固定 |
+| `192.168.4.100` 〜 `192.168.4.227` | **ESP センサーノード (静的宣言)** | ESP が MAC から自動算出 |
+| `192.168.4.228` 〜 `192.168.4.254` | DHCP プール (スマホ・PC 等の一時接続) | dnsmasq |
+
+ESP 側の算出式 (全チップ共通、per-chip 書換えなし):
+
+```cpp
+uint8_t mac[6];
+WiFi.macAddress(mac);
+IPAddress fixedIP(192, 168, 4, 100 + (mac[5] & 0x7F));   // .100 〜 .227
+IPAddress gateway(192, 168, 4, 1);
+IPAddress subnet(255, 255, 255, 0);
+WiFi.config(fixedIP, gateway, subnet);   // ← WiFi.begin() より前に呼ぶ
+WiFi.begin(apSSID, apPassword);
+```
+
+Pi 側設定:
 
 ```bash
 sudo tee /etc/dnsmasq.d/wlan1.conf > /dev/null << 'EOF'
 interface=wlan1
-bind-interfaces
 domain-needed
 bogus-priv
-no-resolv
-listen-address=192.168.4.1
 
-# DHCP プール範囲 (未予約の動的割当領域、一時接続用)
-dhcp-range=192.168.4.100,192.168.4.199,255.255.255.0,24h
-
-# ===== ESP デバイスの MAC-IP 予約 (200-254 は予約専用領域) =====
-# 新チップ追加時はここに以下の書式で 1 行追加:
-#   dhcp-host=<MAC 小文字コロン区切り>,<予約 IP>,<hostname>
-# 例:
-# dhcp-host=84:cc:a8:a1:b2:c3,192.168.4.208,ESP-A1B2C3
-# dhcp-host=84:cc:a8:d4:e5:f6,192.168.4.209,ESP-D4E5F6
+# DHCP プールは一時接続 (スマホ・PC) 用のみ。
+# ESP は .100-.227 を自分で静的宣言するので、この範囲と重ねないこと。
+dhcp-range=192.168.4.228,192.168.4.254,255.255.255.0,24h
+dhcp-option=option:router,192.168.4.1
+dhcp-option=option:dns-server,8.8.8.8,8.8.4.4
 EOF
 
 sudo systemctl enable dnsmasq
-sudo systemctl start dnsmasq
+sudo systemctl restart dnsmasq
 sudo systemctl status dnsmasq --no-pager
 ```
 
-**新チップ追加時の手順** (詳細):
-`outputs/temperature_server_deploy/dnsmasq_mac_reservation.md` に **canonical
-運用手順** を記載。要点:
+> **`bind-interfaces` / `no-resolv` / `listen-address` を書かない理由:**
+> `bind-interfaces` は起動時に wlan1 が上がっていないと dnsmasq が失敗するため、
+> systemd の起動順序に依存して脆くなります。`no-resolv` + `listen-address` は
+> DNS サーバー機能を前提にした設定ですが、本構成では DHCP で Google DNS を
+> 配るだけなので不要です。指定なしで実証済み。
 
-1. `ESP_MAC_Address_Getter.ino` で新チップの MAC を取得
-2. `/etc/dnsmasq.d/wlan1.conf` に `dhcp-host=<MAC>,<IP>,<hostname>` を 1 行追加
-3. `sudo systemctl restart dnsmasq`
-4. 本番スケッチを新チップに **書換え無しでコピペ書込み**
-5. ダッシュボード管理画面で nickname 割当
+**新チップ追加時の手順**:
+
+1. 本番スケッチを新チップに **書換え無しでコピペ書込み**
+2. 起動すると MAC から `device_id` と IP が自動決定される (Pi 側の作業ゼロ)
+3. ダッシュボード管理画面で nickname 割当
+
+> **`.100 + (mac[5] & 0x7F)` の衝突可能性:** MAC 末尾 1 バイトの下位 7 bit を
+> 使うので 128 通り。同一 AP 配下で末尾 7 bit が一致するチップが 2 台あると
+> 衝突します。実運用の 10-100 台オーダーでは確率は低いですが、ゼロではありません。
+> 導入時に各チップの起動ログで IP を控え、重複したら **片方のチップを別個体に
+> 差し替える** (MAC が変われば IP も変わる) か、**そのチップのスケッチだけ
+> 固定値で IP を上書きする**かで回避してください。
+> ESP 側が静的宣言している以上、Pi 側の `dhcp-host=` では回避できません。
 
 ---
 

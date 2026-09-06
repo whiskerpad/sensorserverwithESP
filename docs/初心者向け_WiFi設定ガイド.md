@@ -168,8 +168,9 @@ sudo netplan apply
 - [ ] `sudo journalctl -u hostapd -n 20` にエラー無し
 - [ ] ESP に書換え済スケッチを書込み、シリアルモニタで:
     ```
-    Connecting to WiFi: MySensorNet (DHCP, dnsmasq reservation)
-    WiFi connected: ip=192.168.4.X rssi=-XX dBm
+    Connecting to WiFi: MySensorNet (static, derived from MAC)
+    WiFi connected: ip=192.168.4.XXX rssi=-XX dBm
+    ※ IP は MAC から自動算出 (192.168.4.100〜227)。設定不要
     ```
 
 **B の設定 (家 WiFi)** の確認:

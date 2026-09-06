@@ -288,7 +288,7 @@ Tailscale は物理インターフェースを触らず、`tailscale0` という
 
 - wlan0 (LAN 側管理接続、`192.168.11.200`)
 - wlan1 (AP 側、hostapd で `192.168.4.1`、ESP センサーの POST 受付)
-- dnsmasq (wlan1 側 DHCP 予約)
+- dnsmasq (wlan1 側 DHCP プール `.228-.254`。ESP は方式D で静的宣言)
 - Flask temperature-server / i2c-lcd-display 等の systemd サービス
 
 ### 8.2 tailnet 側から Flask ダッシュボードを見る (副次的な便利機能)

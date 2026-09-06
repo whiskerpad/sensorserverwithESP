@@ -14,13 +14,13 @@ canonical (実装として採用中) の一覧はトップ `README.md` 参照。
 |---|---|---|
 | `temperature_server_full/` | ★**canonical (使用中)** | I:\ 実績版をベースに監査・整理した本命実装。`install.sh` で venv + systemd 一括導入。 |
 | `temperature_server/` | 廃止 | 独自書き起こしの中間版。方針 P (I:\ 既存実装ベース採用) で不採用。参考程度に残置。 |
-| `temperature_server_deploy/` | 一部参考 | 過去のデプロイ用 PowerShell スクリプト群 (deploy_cleanup.ps1 等)。手動デプロイの参考のみ。canonical は `temperature_server_full/install.sh`。ただし `dnsmasq_mac_reservation.md` は現役の DHCP 予約手順ガイドなので削除しない。 |
+| `temperature_server_deploy/` | 一部参考 | 過去のデプロイ用 PowerShell スクリプト群 (deploy_cleanup.ps1 等)。手動デプロイの参考のみ。canonical は `temperature_server_full/install.sh`。`dnsmasq_mac_reservation.md` は 2026-09-03 に方式D へ移行したため **非採用**。DHCP 予約手法の参考資料として残す。 |
 
 ## ESP スケッチ
 
 | フォルダ | 状態 | 経緯 |
 |---|---|---|
-| `ESP8266_DS18B20_HTTPPOST/` | 廃止 | 最初の DHCP 版 STEP 2。方針 A (DeepSleep + DHCP 予約) 採用で不採用。 |
+| `ESP8266_DS18B20_HTTPPOST/` | 廃止 | 最初の DHCP 版 STEP 2。DeepSleep + 方式D (MAC 由来静的 IP) 採用で不採用。 |
 | `ESP8266_DS18B20_Serial/` | 廃止 | 初期の Serial 送信版。WiFi POST 化で退役。 |
 | `ESP8266_ESPNOW_Sensor/` | 誤配置 | 実態は WiFi POST 旧版。ファイル自体は stub 化済み。 |
 | `ESP32C3_ESPNOW_Battery_Sensor/` | canonical | XIAO ESP32-C3 の ESP-NOW + DeepSleep 電池版。I:\ 実績スケッチベース。 |

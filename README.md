@@ -14,7 +14,7 @@ ESP-WROOM-02 (技適対応) や ESP32 系と DS18B20 温度センサーで構成
 | レイヤー | 目的 | 実装 | 誰が決める |
 |---|---|---|---|
 | **識別** | このチップは物理的にどれか | MAC 由来 device_id (例: `ESP-A1B2C3`) | 自動 (チップ起動時) |
-| **ネットワーク** | どの IP でつながるか | Pi 側 dnsmasq の DHCP 予約 | Pi 側管理者 |
+| **ネットワーク** | どの IP でつながるか | 方式D: MAC 由来の静的 IP を ESP が自己宣言 (`192.168.4.100 + (mac[5] & 0x7F)`) | 自動 (チップ起動時) |
 | **表示** | 人間にとって何と呼ぶか | Flask の nickname テーブル (例: 冷却塔1) | ダッシュボード管理者 |
 
 **結果**:
@@ -62,11 +62,11 @@ ESP-WROOM-02 (技適対応) や ESP32 系と DS18B20 温度センサーで構成
 | `ESP32_ESPNOW_Master/` | ESP32 | ESP-NOW 受信 + Serial 出力 | ESP-NOW ハブ (受信専用) |
 | `ESP32_ESPNOW_Sensor/` | ESP32 | ESP-NOW 送信 | ESP-NOW センサー (ノンスリープ) |
 | `ESP32C3_ESPNOW_Battery_Sensor/` | ESP32-C3 | ESP-NOW 送信 + DeepSleep | 電池運用の ESP-NOW センサー |
-| `ESP_MAC_Address_Getter/` | ESP32/ESP8266 | (書込み用ユーティリティ) | **必須: dnsmasq 予約用に MAC 取得** |
+| `ESP_MAC_Address_Getter/` | ESP32/ESP8266 | (書込み用ユーティリティ) | MAC 確認用。**方式D では必須ではない** (ESP-NOW ピア指定時に使う) |
 
-**フォルダ名の "FixedIP" について**: 過去の静的 IP 版の名残。現在は DHCP 予約
-方式に移行しているため実質的には固定 IP と同等 (Pi 側 dnsmasq で予約)。
-フォルダ名変更は将来の課題として保留 (Arduino IDE のスケッチパスを維持するため)。
+**フォルダ名の "FixedIP" について**: 名前のとおり ESP 側で固定 IP を宣言する
+方式 (方式D) です。ただし固定値を手で書くのではなく、MAC から自動算出します
+(`192.168.4.(100 + mac[5] & 0x7F)`)。スケッチは全チップ同一のままで済みます。
 
 ### 配線ガイド
 
@@ -81,7 +81,7 @@ ESP-WROOM-02 (技適対応) や ESP32 系と DS18B20 温度センサーで構成
 |---|---|
 | `temperature_server_full/` | ★**Flask 本体 (canonical、公開ソース)** — `install.sh` 一発で venv + systemd 導入 |
 | `i2c_lcd_display/` | 現地ステータス表示 (I2C 20x4 LCD、`install_service.sh` で venv + systemd 導入) |
-| `temperature_server_deploy/` | 過去のデプロイスクリプト・DHCP 予約ガイド (参考) |
+| `temperature_server_deploy/` | 過去のデプロイスクリプト・DHCP 予約ガイド (**非採用**、参考資料) |
 
 ### 統合ドキュメント (公開向け入口)
 
@@ -97,7 +97,7 @@ ESP-WROOM-02 (技適対応) や ESP32 系と DS18B20 温度センサーで構成
 | `docs/I2C_LCD_接続と設置ガイド.md` | HD44780 20x4 LCD 導入手順 |
 | `docs/USB_Camera_セットアップガイド.md` | USB Web カメラ (UVC) 導入・トラブルシューティング |
 | `docs/Tailscale_導入ガイド.md` | 遠隔 SSH / ダッシュボードアクセス (VPN オーバーレイ) |
-| `temperature_server_deploy/dnsmasq_mac_reservation.md` | ★DHCP 予約設定 (chip 追加のたびに使う) |
+| `temperature_server_deploy/dnsmasq_mac_reservation.md` | DHCP 予約設定 (**非採用**。方式D に移行済み、参考資料として保存) |
 | `temperature_server_full/docs/esp_devices/` | ESP-NOW 詳細実装ガイド |
 | `ARCHIVE.md` | レガシー資産・削除候補の一覧 (詳細はそちら参照) |
 
@@ -171,22 +171,17 @@ bash install.sh                                # 冪等 (venv 再作成しない
 ## 新チップ追加ワークフロー (5 分で完了)
 
 ```
-Step 1: MAC 取得
-  ESP_MAC_Address_Getter.ino を新チップに書込み → Serial モニタで MAC 確認
-  例: 84:CC:A8:A1:B2:C3
-
-Step 2: Pi に DHCP 予約追加 (SSH で)
-  sudo nano /etc/dnsmasq.d/wlan1.conf
-  → 末尾に 1 行追加:
-    dhcp-host=84:cc:a8:a1:b2:c3,192.168.4.208,ESP-A1B2C3
-  sudo systemctl restart dnsmasq
-
-Step 3: 本番スケッチを新チップに書込み (書換え無しでコピペ)
+Step 1: 本番スケッチを新チップに書込み (書換え無しでコピペ)
   ESP8266_DeepSleep_FixedIP_Sensor.ino をそのまま書込む
+  ※ Pi 側の作業は不要。MAC から device_id と IP が自動で決まる
 
-Step 4: ダッシュボードで動作確認 + nickname 割当
+Step 2: ダッシュボードで動作確認 + nickname 割当
   http://<Pi の LAN IP>:5000/management → 表示名管理タブ
   → "ESP-A1B2C3" が現れたら「冷却塔1」等の表示名を保存
+
+Step 3: IP の重複確認
+  device 一覧で ip_address が既存機と重ならないことを確認
+  (MAC 末尾 7 bit が一致すると衝突しうる。詳細は docs/デバイス識別設計.md)
 ```
 
 詳細手順: `temperature_server_deploy/dnsmasq_mac_reservation.md`
@@ -259,11 +254,11 @@ DELETE /api/nicknames/<device_id>     - 表示名を削除
 
 同じ `device_id` で違う `ip_address` からの POST を検知 → Flask ログに `[DUPLICATE device_id WARNING]` 出力。MAC ベースなら通常発生しないが、事故検知の保険。
 
-## 現行状態 (2026-08-12 時点)
+## 現行状態 (2026-09-03 時点)
 
-- 3 層分離アーキテクチャ (MAC ベース device_id + DHCP 予約 + nickname) 導入
+- 3 層分離アーキテクチャ (MAC ベース device_id + MAC 由来静的 IP + nickname) 導入
 - ESP スケッチ全種 MAC ベース化完了 (ESP-WROOM-02 / ESP32 WROOM-DA / XIAO ESP32-C3、WiFi 直接 POST + ESP-NOW 両パターン)
-- dnsmasq DHCP 予約ガイドを canonical 手順として整備
+- ネットワーク層は方式D (ESP 側で MAC 由来の静的 IP を宣言) を canonical とする。DHCP 予約ガイドは参考資料に降格
 - Flask 側の重複検知 + rssi/signal_strength 両受理 実装済
 - ESP-NOW パイプライン (子機 → Master → Serial → Flask) end-to-end 動作確認済、Master 側で物理層 RSSI 取得実装済
 - **HD44780 20x4 I2C LCD による現地ステータス表示** (半角カナ nickname / CGRAM RSSI バー / カメラ・AP・WLAN アイコン / RSSI ↔ 経過時間の交互表示)
@@ -284,6 +279,7 @@ MIT (予定)
 - 2026-07-18 ESP-WROOM-02 本番版のスケッチ修正、LED 診断版作成
 - 2026-07-28 ESP32/ESP-NOW スケッチ群を Z: に統合、重複検知機能追加
 - 2026-07-30 **3 層分離アーキテクチャ (MAC ベース device_id + DHCP 予約) に全面移行**
+- 2026-09-03 **ネットワーク層を方式D (MAC 由来の静的 IP を ESP 側で自己宣言、`.100-.227`) に変更**。DHCP プールは `.228-.254` の一時接続用のみ。DeepSleep 時の DHCP 折衝を削減 + 新チップ追加時に Pi 側作業を不要化
 - 2026-08-07 I2C 20x4 LCD 導入 (Nokia 5110 は故障で退役)、半角カナ + CGRAM アイコン
 - 2026-08-09 LCD 交互表示 (RSSI ↔ 経過時間) で通信途絶を可視化
 - 2026-08-11 Tailscale 遠隔アクセス導入

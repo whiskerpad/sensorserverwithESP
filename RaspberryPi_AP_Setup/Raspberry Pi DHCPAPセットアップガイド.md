@@ -326,7 +326,7 @@ sudo apt install -y dnsmasq
 ```bash
 sudo tee /etc/dnsmasq.d/wlan1.conf > /dev/null << 'EOF'
 interface=wlan1
-dhcp-range=192.168.4.2,192.168.4.254,255.255.255.0,24h
+dhcp-range=192.168.4.228,192.168.4.254,255.255.255.0,24h
 dhcp-option=option:router,192.168.4.1
 dhcp-option=option:dns-server,8.8.8.8,8.8.4.4
 EOF
@@ -337,7 +337,7 @@ EOF
 | キー | 意味 |
 |---|---|
 | `interface=wlan1` | wlan1 側のみ DHCP を提供 (wlan0 = 既設 WiFi 側には影響しない) |
-| `dhcp-range=192.168.4.2,192.168.4.254,...,24h` | 192.168.4.2 〜 254 を動的割当、24時間リース (240台まで受け入れ) |
+| `dhcp-range=192.168.4.228,192.168.4.254,...,24h` | 192.168.4.228 〜 254 を動的割当、24時間リース。**ESP は .100-.227 を自分で静的宣言するので、そこは DHCP プールから外してある** (下記注記) |
 | `dhcp-option=option:router,192.168.4.1` | クライアントのデフォルトルート = Pi 自身 |
 | `dhcp-option=option:dns-server,8.8.8.8,8.8.4.4` | クライアントの DNS = Google DNS (Pi 側で DNS 転送設定なしで済む) |
 
@@ -345,14 +345,30 @@ EOF
 
 > **`log-dhcp` を常時 ON にしない理由:** DHCP イベント (DISCOVER/OFFER/REQUEST/ACK) が全て syslog に出るため、常用ではログ量が多すぎます。トラブル切り分け時のみ `sudo sed -i '$a log-dhcp' /etc/dnsmasq.d/wlan1.conf && sudo systemctl restart dnsmasq` で足すのが実用的。
 
-> **MAC アドレス固定割当が欲しい場合** (端末番号を IP で識別したいなど):
+> **アドレス設計 (方式D):** 本プロジェクトでは ESP センサーノードに `dhcp-host=` の
+> 予約を **使いません**。ESP 側が自分の MAC から IP を算出して静的宣言します。
 >
-> ```
-> dhcp-host=AA:BB:CC:11:22:33,esp8266-01,192.168.4.21
-> dhcp-host=AA:BB:CC:11:22:34,esp8266-02,192.168.4.22
+> | 範囲 | 用途 |
+> |---|---|
+> | `192.168.4.1` | Pi 自身 (wlan1、ゲートウェイ) |
+> | `192.168.4.100` 〜 `.227` | ESP センサーノード (ESP が自己宣言) |
+> | `192.168.4.228` 〜 `.254` | DHCP プール (スマホ・PC 等の一時接続) |
+>
+> ESP スケッチ側 (全チップ共通、per-chip 書換えなし):
+>
+> ```cpp
+> uint8_t mac[6];
+> WiFi.macAddress(mac);
+> IPAddress fixedIP(192, 168, 4, 100 + (mac[5] & 0x7F));   // .100 〜 .227
+> WiFi.config(fixedIP, IPAddress(192,168,4,1), IPAddress(255,255,255,0));
+> WiFi.begin(apSSID, apPassword);   // ← config は begin より前に呼ぶ
 > ```
 >
-> ESP の MAC は `WiFi.macAddress()` でシリアルに出させて控えておくと楽。
+> **DHCP 予約 (`dhcp-host=`) にしない理由:** DeepSleep 運用では起きるたびに
+> DISCOVER/OFFER/REQUEST/ACK の折衝が発生します。予約があっても往復回数は減らず、
+> 電波状況が悪いとリトライで伸びる。静的宣言なら折衝そのものが無くなり、
+> さらに **新チップ追加時に Pi 側を触る必要がなくなります**。
+> 詳細は `outputs/docs/デバイス識別設計.md` 参照。
 
 インストール時点で dnsmasq は自動 enable + active になっています (Debian デフォルト)。上記 config を配置したら反映のため再起動:
 
@@ -364,7 +380,7 @@ sudo systemctl status dnsmasq --no-pager | head -10
 期待するログ (`journalctl -u dnsmasq -n 10 --no-pager`):
 
 ```
-dnsmasq-dhcp: DHCP, IP range 192.168.4.2 -- 192.168.4.254, lease time 1d
+dnsmasq-dhcp: DHCP, IP range 192.168.4.228 -- 192.168.4.254, lease time 1d
 ```
 
 ---
@@ -619,7 +635,7 @@ sudo netfilter-persistent save
 - **Pi のリブート後の自動起動**: §4〜§6 で全ユニットを `enable` 済みなら、起動時に自動で立ち上がる (実測起動順は §7 参照)
 - **AP のチャンネル変更**: 周辺 Wi-Fi が混雑しているなら `channel=11` に変えて `sudo systemctl restart hostapd`
 - **hostapd config 変更後**: `sudo systemctl restart hostapd` で反映 (**config は /etc/hostapd/hostapd.conf**、Phase 3 で使った /tmp/hostapd-test.conf ではない)
-- **MAC 固定割当を増やす**: `/etc/dnsmasq.d/wlan1.conf` に `dhcp-host=...` 行を追加して `sudo systemctl restart dnsmasq`
+- **ESP センサーノードを増やす**: 本番スケッチをコピペで書き込むだけ (Pi 側の作業なし)。IP は MAC から自動算出される。**例外的に** IP を手で固定したい機器がある場合のみ `/etc/dnsmasq.d/wlan1.conf` に `dhcp-host=...` 行を追加して `sudo systemctl restart dnsmasq` (割当先は `.228-.254` の外にすること)
 - **ドライバー整合性の定期確認**: kernel 更新後は `readlink /sys/class/net/wlan1/device/driver` が `rtl8821au` を指していることを確認 (DKMS で自動再ビルドされているはずだが念のため)
 - **ドライバー導入ガイドの `readlink` チェック**: 定期的に driver シンボリックリンクが期待通りかを確認する習慣をつけると、ハマる前に気付ける
 

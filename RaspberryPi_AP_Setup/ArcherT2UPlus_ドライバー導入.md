@@ -31,7 +31,8 @@ Pi 3B+ / Pi 5 / Bookworm でも同じ手順で動作します (パッケージ�
 - `wlan1` が Realtek OUI の MAC で作成、`driver` シンボリックリンクが `rtl8821au` を指す
 - `iw phy phy1 info` で `Supported interface modes: * AP` が宣言される
 - `hostapd` (SSID `YOUR_AP_SSID_HERE` / passphrase `YOUR_AP_PASSWORD_HERE` / channel 6) で `AP-ENABLED` に到達
-- `dnsmasq` (dhcp-range 192.168.4.2-254) と組み合わせて **スマホから接続 + DHCP 取得** に成功
+- `dnsmasq` (当時の検証構成: dhcp-range 192.168.4.2-254) と組み合わせて **スマホから接続 + DHCP 取得** に成功
+  ※ 本番構成のアドレス設計は `.228-.254` プール。§9-5 と `docs/デバイス識別設計.md` を参照
 
 ---
 
@@ -461,7 +462,8 @@ sudo apt install -y dnsmasq
 
 sudo tee /etc/dnsmasq.d/wlan1.conf > /dev/null << 'EOF'
 interface=wlan1
-dhcp-range=192.168.4.2,192.168.4.254,255.255.255.0,24h
+# ESP は .100-.227 を自分で静的宣言する (方式D)。プールはそこと重ねない
+dhcp-range=192.168.4.228,192.168.4.254,255.255.255.0,24h
 dhcp-option=option:router,192.168.4.1
 dhcp-option=option:dns-server,8.8.8.8,8.8.4.4
 EOF
