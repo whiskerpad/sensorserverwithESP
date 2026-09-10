@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>温度モニタ</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<!-- 時間軸を使うには日付アダプタも要る (理由は 6.1) -->
+<script src="https://cdn.jsdelivr.net/npm/date-fns@3.6.0/cdn.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<style>
+  body { font-family: sans-serif; margin: 1rem; background:#fafafa; }
+  h1 { font-size: 1.2rem; }
+  table { border-collapse: collapse; margin-bottom: 1.5rem; }
+  th, td { border: 1px solid #ccc; padding: 4px 10px; text-align: left; }
+  th { background: #eee; }
+  .wrap { max-width: 900px; }
+  .stale { color: #cf2e2e; }
+  select { padding: 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>温度モニタ</h1>
+  <p><a href="/manage">デバイスの表示名を編集</a></p>
+  <table id="latest">
+    <thead>
+      <tr><th>デバイス</th><th>温度</th><th>電池</th><th>RSSI</th>
+          <th>経路</th><th>最終受信</th></tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+  <label>表示範囲:
+    <select id="range">
+      <option value="3">3 時間</option>
+      <option value="24" selected>24 時間</option>
+      <option value="168">7 日</option>
+    </select>
+  </label>
+  <canvas id="chart" height="120"></canvas>
+</div>
+<script>
+const COLORS = ['#2563eb','#dc2626','#16a34a','#d97706','#7c3aed','#0891b2'];
+let chart = null;
+
+// SQLite の "YYYY-MM-DD HH:MM:SS" (UTC) を Date に変換
+function toDate(s) { return new Date(s.replace(' ', 'T') + 'Z'); }
+
+async function loadLatest() {
+  const rows = await (await fetch('/api/latest')).json();
+  const tbody = document.querySelector('#latest tbody');
+  tbody.innerHTML = '';
+  const now = Date.now();
+  for (const r of rows) {
+    const d = toDate(r.timestamp);
+    const mins = Math.round((now - d.getTime()) / 60000);
+    const tr = document.createElement('tr');
+
+    // 1 列目: 表示名があれば名前、device_id は小さく下に添える
+    const tdName = document.createElement('td');
+    if (r.nickname) {
+      tdName.textContent = r.nickname;
+      const sub = document.createElement('div');
+      sub.style.cssText = 'font-size:.8em;color:#888;font-family:monospace';
+      sub.textContent = r.device_id;
+      tdName.appendChild(sub);
+    } else {
+      tdName.textContent = r.device_id;
+    }
+    tr.appendChild(tdName);
+
+    // 2 列目以降は第8回のまま
+    tr.insertAdjacentHTML('beforeend',
+      `<td>${r.temperature.toFixed(2)} ℃</td>` +
+      `<td>${r.voltage != null ? r.voltage.toFixed(2) + ' V' : '-'}` +
+        `${r.battery_mode ? ' (残量低下)' : ''}</td>` +
+      `<td>${r.rssi != null ? r.rssi + ' dBm' : '-'}</td>` +
+      `<td>${r.connection_type}</td>` +
+      `<td class="${mins > 15 ? 'stale' : ''}">` +
+        `${d.toLocaleString('ja-JP')} (${mins} 分前)</td>`);
+
+    tbody.appendChild(tr);
+  }
+}
+
+async function loadChart() {
+  const hours = document.querySelector('#range').value;
+  const series = await (await fetch('/api/history?hours=' + hours)).json();
+
+  const datasets = Object.keys(series).sort().map((id, i) => ({
+    label: series[id].label,
+    data: series[id].points.map(p => ({ x: toDate(p.t), y: p.v })),
+    borderColor: COLORS[i % COLORS.length],
+    backgroundColor: COLORS[i % COLORS.length],
+    borderWidth: 2,
+    pointRadius: 0,
+    tension: 0.2
+  }));
+
+  if (chart) chart.destroy();
+  chart = new Chart(document.querySelector('#chart'), {
+    type: 'line',
+    data: { datasets },
+    options: {
+      responsive: true,
+      interaction: { mode: 'nearest', intersect: false },
+      scales: {
+        x: { type: 'time', time: { tooltipFormat: 'MM/dd HH:mm' },
+             ticks: { maxTicksLimit: 8 } },
+        y: { title: { display: true, text: '℃' } }
+      }
+    }
+  });
+}
+
+async function refresh() { await loadLatest(); await loadChart(); }
+document.querySelector('#range').addEventListener('change', loadChart);
+refresh();
+setInterval(refresh, 60000);   // 1 分ごとに更新
+</script>
+</body>
+</html>

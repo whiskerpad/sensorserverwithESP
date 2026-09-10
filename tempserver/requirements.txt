@@ -1,0 +1,17 @@
+# tempserver が必要とするもの
+#
+# Raspberry Pi OS (Bookworm 以降) では apt で入れるのを推奨します。
+# OS が管理する Python にそのまま入るので、venv も pip も要りません。
+#
+#     sudo apt update
+#     sudo apt install -y python3-flask python3-serial sqlite3
+#
+# 動作を確認した組み合わせ (2026-09 時点):
+#     Python 3.13.5 / Flask 3.1.1
+#
+# 以下は pip で入れる場合の指定です。Bookworm 以降の pip は
+# OS 管理の Python への直接インストールを拒否するため、
+# venv を作るか --break-system-packages が必要になります。
+
+Flask>=3.0
+pyserial>=3.5

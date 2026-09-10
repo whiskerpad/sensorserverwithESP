@@ -63,3 +63,9 @@ _synctest*.txt
 # ---- 作業中に作った日付つきバックアップ (git 履歴があるので不要) ----
 *.bak-*
 *.bak.*
+
+# ---- SQLite (実データは公開しない) ----
+*.db
+*.db-journal
+*.db-wal
+*.db-shm

@@ -7,6 +7,24 @@ ESP-WROOM-02 (技適対応) や ESP32 系と DS18B20 温度センサーで構成
 商業ビル管理業務の現場で、オーナー側 LAN に接続できない環境でも独立した
 センサーネットワークを構築できるように設計。
 
+<!-- tempserver-note -->
+## 連載を追う人へ
+
+ブログ連載「しまい込んでいた電子部品と、AI で形にできる温度監視システム」で作るのは
+**[`tempserver/`](tempserver/)** です。1 ファイル 333 行の Flask サーバーで、導入手順は
+[tempserver/README.md](tempserver/README.md) にまとまっています。
+
+このリポジトリには温度サーバーの実装が複数入っています。用途が違うので、下の表で選んでください。
+
+| ディレクトリ | 位置づけ |
+|---|---|
+| `tempserver/` | **連載版。まずこれ。** 1 ファイル完結。venv 不要 (apt で導入) |
+| `temperature_server/` | 旧実装。`app/` パッケージ分割版 |
+| `temperature_server_full/` | 旧実装。実運用版。テスト・CLI まで含む大きいもの |
+| `temperature_server_deploy/` | 旧実装への PowerShell 配布スクリプト |
+
+ESP 側のスケッチは連載版・旧実装で共通です。
+
 ## 設計方針: 3 層分離アーキテクチャ (2026-07-30 導入)
 
 センサー ID・IP アドレス・表示名を **独立したレイヤーで管理**:
@@ -132,6 +150,11 @@ cp .env.example .env
 ```
 
 ## インストール順序 (公開版、venv 前提)
+
+> **注意:** この節は旧実装 (`temperature_server/` `temperature_server_full/`) の手順で、venv を前提にしています。
+> 連載版 `tempserver/` は venv を使いません (`sudo apt install -y python3-flask python3-serial sqlite3`)。
+> 導入手順は [tempserver/README.md](tempserver/README.md) を参照してください。
+
 
 新規に Pi を組んで一から立ち上げる場合、以下の順で実行:
 

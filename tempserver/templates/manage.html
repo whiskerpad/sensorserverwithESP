@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>デバイス表示名の管理</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 16px; max-width: 900px; }
+  h1 { font-size: 1.3rem; }
+  table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+  th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+  th { background: #f4f4f4; }
+  .id { font-family: monospace; font-size: .85em; }
+  .none, .note { color: #999; font-size: .9em; }
+  input[type=text] { width: 100%; padding: 4px; box-sizing: border-box; }
+  button { padding: 4px 10px; margin-right: 4px; cursor: pointer; }
+  #msg { margin-top: 10px; min-height: 1.4em; }
+  .ok { color: #16a34a; }
+  .ng { color: #dc2626; }
+</style>
+</head>
+<body>
+<h1>デバイス表示名の管理</h1>
+<p><a href="/">← ダッシュボードに戻る</a></p>
+
+<table>
+  <thead><tr>
+    <th>種類</th><th>device_id</th><th>現在の表示名</th>
+    <th>新しい表示名</th><th>操作</th>
+  </tr></thead>
+  <tbody id="rows"><tr><td colspan="5">読み込み中...</td></tr></tbody>
+</table>
+<div id="msg"></div>
+
+<script>
+// device_id の接頭辞から種類を推測する。第4回で決めた命名規則が効いてくるところ。
+function kindOf(id) {
+  if (id.startsWith('MST-')) return 'Master';
+  if (id.startsWith('ESP-')) return 'WiFi センサー';
+  if (id.startsWith('NOW-')) return 'ESP-NOW センサー';
+  return '不明';
+}
+
+function say(text, ok) {
+  const m = document.getElementById('msg');
+  m.textContent = text;
+  m.className = ok ? 'ok' : 'ng';
+}
+
+async function load() {
+  const [latest, nicks] = await Promise.all([
+    fetch('/api/latest').then(r => r.json()),
+    fetch('/api/nicknames').then(r => r.json())
+  ]);
+
+  const nickOf = {};
+  for (const n of nicks) nickOf[n.device_id] = n.nickname;
+
+  // 温度が来ているデバイスと、名前だけ登録済みのデバイスを合わせて並べる。
+  // Master は温度を出さないので、後者を拾わないと一覧に現れない。
+  const ids = new Set();
+  const hasTemp = {};
+  for (const r of latest) { ids.add(r.device_id); hasTemp[r.device_id] = true; }
+  for (const id of Object.keys(nickOf)) ids.add(id);
+
+  const order = id => (id.startsWith('MST-') ? '1'
+                     : id.startsWith('ESP-') ? '2'
+                     : id.startsWith('NOW-') ? '3' : '9') + id;
+  const list = Array.from(ids).sort((a, b) => order(a).localeCompare(order(b)));
+
+  const tbody = document.getElementById('rows');
+  tbody.textContent = '';
+
+  if (list.length === 0) {
+    const tr = tbody.insertRow();
+    const td = tr.insertCell();
+    td.colSpan = 5;
+    td.textContent = 'まだデバイスが 1 台も見つかっていません';
+    return;
+  }
+
+  for (const id of list) {
+    const tr = tbody.insertRow();
+
+    tr.insertCell().textContent = kindOf(id);
+
+    const cId = tr.insertCell();
+    cId.className = 'id';
+    cId.textContent = id;
+    if (!hasTemp[id]) {
+      const s = document.createElement('span');
+      s.className = 'note';
+      s.textContent = ' (温度データなし)';
+      cId.appendChild(s);
+    }
+
+    const cNow = tr.insertCell();
+    cNow.textContent = nickOf[id] || '(未設定)';
+    if (!nickOf[id]) cNow.className = 'none';
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.maxLength = 50;
+    input.placeholder = '例: 冷却塔1、外気温';
+    input.value = nickOf[id] || '';
+    tr.insertCell().appendChild(input);
+
+    const cOp = tr.insertCell();
+    const save = document.createElement('button');
+    save.textContent = '保存';
+    save.onclick = () => setNick(id, input.value.trim());
+    cOp.appendChild(save);
+
+    if (nickOf[id]) {
+      const del = document.createElement('button');
+      del.textContent = '削除';
+      del.onclick = () => delNick(id);
+      cOp.appendChild(del);
+    }
+  }
+}
+
+async function setNick(id, nickname) {
+  if (!nickname) { say('表示名を入力してください', false); return; }
+  const res = await fetch('/api/nicknames/' + encodeURIComponent(id), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nickname: nickname })
+  });
+  const data = await res.json();
+  if (data.status === 'ok') { say('保存しました: ' + id + ' → ' + nickname, true); load(); }
+  else { say('保存できません: ' + (data.reason || res.status), false); }
+}
+
+async function delNick(id) {
+  if (!confirm('表示名を削除しますか?  device_id: ' + id)) return;
+  const res = await fetch('/api/nicknames/' + encodeURIComponent(id),
+                          { method: 'DELETE' });
+  const data = await res.json();
+  if (data.status === 'ok') { say('削除しました: ' + id, true); load(); }
+  else { say('削除できません: ' + res.status, false); }
+}
+
+load();
+</script>
+</body>
+</html>
