@@ -143,12 +143,11 @@ void setup() {
     // ===== 4. 電源検出 =====
     int adcValue = analogRead(POWER_SOURCE_PIN);
     float voltage = (adcValue / 1023.0) * 4.3;
-    bool isBatteryMode = (voltage < 3.5);
-
-    // 電池残量を計算 (2.5V=0%, 3.3V=100%)
-    float batteryPercent = ((voltage - 2.5) / 0.8) * 100.0;
-    if (batteryPercent < 0.0) batteryPercent = 0.0;
-    if (batteryPercent > 100.0) batteryPercent = 100.0;
+    // 「残量が少ない」の判定。第7回の XIAO 版と意味を揃えています。
+    // 3.3V は運用上の判断値で、実測ではありません。電池を 1 セット
+    // 使い切って、実際に止まる電圧を見てから決め直すのが確実です。
+    const float BATTERY_LOW_V = 3.3;
+    bool isBatteryLow = (voltage < BATTERY_LOW_V);
 
     // ===== 5. WiFi接続 (静的 IP を MAC 下位バイトから自動生成、方式 D) =====
     // 【変更 2026-08-21】DHCP → 静的 IP に戻す (per-chip 書換え不要は維持)
@@ -189,8 +188,7 @@ void setup() {
         doc["temp"] = round(temp * 100) / 100.0;
         doc["ip_address"] = WiFi.localIP().toString();       // 自己宣言した実 IP
         doc["voltage"] = round(voltage * 100) / 100.0;
-        doc["battery_percent"] = (int)batteryPercent;
-        doc["battery_mode"] = isBatteryMode ? 1 : 0;
+        doc["battery_mode"] = isBatteryLow ? 1 : 0;
         doc["rssi"] = WiFi.RSSI();                            // Flask が優先読み
         doc["signal_strength"] = WiFi.RSSI();                 // レガシー互換
 

@@ -200,10 +200,11 @@ void setup() {
     // 電源検出
     int adcValue = analogRead(POWER_SOURCE_PIN);
     float voltage = (adcValue / 1023.0) * 4.3;
-    bool isBatteryMode = (voltage < 3.5);
-    float batteryPercent = ((voltage - 2.5) / 0.8) * 100.0;
-    if (batteryPercent < 0.0) batteryPercent = 0.0;
-    if (batteryPercent > 100.0) batteryPercent = 100.0;
+    // 「残量が少ない」の判定。第7回の XIAO 版と意味を揃えています。
+    // 3.3V は運用上の判断値で、実測ではありません。電池を 1 セット
+    // 使い切って、実際に止まる電圧を見てから決め直すのが確実です。
+    const float BATTERY_LOW_V = 3.3;
+    bool isBatteryLow = (voltage < BATTERY_LOW_V);
 
     // WiFi 接続 (静的 IP、方式 D: MAC 下位バイトから IP 導出)
     // 2026-08-21: DHCP → 静的 IP に戻す (電池寿命 2 週間 → 1 か月+ 復帰目的)
@@ -246,8 +247,7 @@ void setup() {
     doc["temp"] = round(temp * 100) / 100.0;
     doc["ip_address"] = WiFi.localIP().toString();
     doc["voltage"] = round(voltage * 100) / 100.0;
-    doc["battery_percent"] = (int)batteryPercent;
-    doc["battery_mode"] = isBatteryMode ? 1 : 0;
+    doc["battery_mode"] = isBatteryLow ? 1 : 0;
     doc["rssi"] = WiFi.RSSI();
     doc["signal_strength"] = WiFi.RSSI();
 
