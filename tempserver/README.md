@@ -20,6 +20,7 @@
 | `app.py` | サーバー本体。受信・保存・API・掃除まで全部これ 1 本 |
 | `templates/index.html` | ダッシュボード（一覧表と Chart.js のグラフ） |
 | `templates/manage.html` | 表示名（ニックネーム）の管理画面 |
+| `static/vendor/` | Chart.js と日付アダプタの実体。CDN を使わないためリポジトリに同梱 |
 | `tempserver.service` | systemd のユニット。電源投入で勝手に上がる |
 | `.env.example` | 設定の雛形。`.env` にコピーして使う |
 | `requirements.txt` | 依存の記録。実際の導入は下記の apt を推奨 |
@@ -33,12 +34,36 @@
 
 - Raspberry Pi 4B / Raspberry Pi OS
 - Python 3.13.5、Flask 3.1.1、pyserial（apt 版）
-- ブラウザは同じ LAN 内の PC / スマートフォン
+- ブラウザは、同じ LAN 内の PC / スマートフォン、および **Pi の AP に直接繋いだ端末**
 
-Chart.js と日付アダプタは **CDN から読み込みます**。
-Pi 側にインターネットは不要ですが、**ダッシュボードを開く端末側**には必要です。
-完全にオフラインで使いたい場合は、`templates/index.html` の
-`<script src="https://cdn.jsdelivr.net/...">` 3 行をローカルに落として差し替えてください。
+### JavaScript は CDN から読みません
+
+Chart.js と日付アダプタは `static/vendor/` に実体を置いてあり、
+`templates/index.html` はそこを見ています。**インターネットは一切要りません。**
+
+もともとは CDN (`cdn.jsdelivr.net`) から読んでいましたが、やめました。
+現場に置いた Pi の AP には**外に出る道がありません**。その AP にノート PC を繋いで
+ダッシュボードを開くと、表は出るのに**グラフだけ出ず、しかも表示がひどく遅い**という
+状態になります。ブラウザが届かない CDN の名前解決を待ってから先へ進むためです
+(`ERR_NAME_NOT_RESOLVED`)。
+
+同梱しているのは次の 3 つです。いずれも配布元の最小化済みファイルそのままで、
+ライセンス表記もファイル先頭に残してあります。
+
+| ファイル | 出どころ |
+|---|---|
+| `chart.umd.min.js` | Chart.js 4.4.0 (MIT) |
+| `date-fns.min.js` | date-fns 3.6.0 (MIT) |
+| `chartjs-adapter-date-fns.bundle.min.js` | chartjs-adapter-date-fns 3.0.0 (MIT) |
+
+更新したいときは、同じ URL から取り直して同名で置き換えてください。
+
+```bash
+cd ~/tempserver/static/vendor
+curl -fsSL -o chart.umd.min.js https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js
+curl -fsSL -o date-fns.min.js https://cdn.jsdelivr.net/npm/date-fns@3.6.0/cdn.min.js
+curl -fsSL -o chartjs-adapter-date-fns.bundle.min.js https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js
+```
 
 ---
 
@@ -148,6 +173,18 @@ http://<Pi の IP アドレス>:5000/
 
 表示名の編集は `http://<Pi の IP アドレス>:5000/manage` です。
 
+開き方は 3 通りあります。**`localhost` が使えるのは Pi 本体の中だけ**である点に注意してください。
+
+| どこから | アドレス |
+|---|---|
+| Pi 本体（モニタとキーボードを付けて） | `http://localhost:5000/` |
+| 同じ LAN の PC / スマートフォン | `http://<Pi の IP アドレス>:5000/` |
+| Pi の AP に直接繋いだ端末 | `http://192.168.4.1:5000/` |
+
+3 番目は、インターネットが無い現場でそのまま使えます。AP に繋いだ端末で
+`http://localhost:5000/` と打つと、**その端末自身**の 5000 番を探しに行くだけなので
+必ず失敗します。
+
 ---
 
 ## 送る側
@@ -192,10 +229,11 @@ http://<Pi の IP アドレス>:5000/
 |---|---|
 | `systemctl status` が `failed` | `journalctl -u tempserver -n 50 --no-pager` に Python の例外が出ている |
 | ブラウザは開くが表が空 | まだ 1 件も届いていない。上の `curl` で試験データを入れて切り分ける |
-| 表は出るがグラフが出ない | 端末側から CDN に届いていない。ブラウザの開発者ツールでエラーを見る |
+| 表は出るがグラフが出ない | `static/vendor/` の 3 ファイルが欠けている。`curl -s -o /dev/null -w "%{http_code}\n" http://localhost:5000/static/vendor/chart.umd.min.js` が 200 か見る |
 | `[serial] シリアルポートが見つかりません` が続く | Master が挿さっていない、または `ls /dev/ttyUSB* /dev/ttyACM*` に出ない |
 | `[serial] 解釈できない JSON` | Master 側のファームウェアが古い。連載の Master スケッチに更新する |
 | `.env` を変えたのに効かない | 手で `python3 app.py` していないか。systemd 経由で再起動する |
+| AP に繋いだ端末から開けない | `localhost` と打っていないか。`http://192.168.4.1:5000/` を打つ |
 | ポート 5000 が塞がっている | `sudo ss -tlnp \| grep 5000` で犯人を見る |
 
 ---
